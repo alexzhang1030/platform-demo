@@ -13,6 +13,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@xtool-demo/core": "workspace:*",
+    "@xtool-demo/protocol": "workspace:*",
     "@workspace/ui": "workspace:*",
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",

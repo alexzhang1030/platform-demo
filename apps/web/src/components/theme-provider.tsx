@@ -1,50 +1,44 @@
 /* eslint-disable react-refresh/only-export-components */
-import * as React from "react"
+import * as React from 'react'
 
-type Theme = "dark" | "light" | "system"
-type ResolvedTheme = "dark" | "light"
+type Theme = 'dark' | 'light' | 'system'
+type ResolvedTheme = 'dark' | 'light'
 
-type ThemeProviderProps = {
+interface ThemeProviderProps {
   children: React.ReactNode
   defaultTheme?: Theme
   storageKey?: string
   disableTransitionOnChange?: boolean
 }
 
-type ThemeProviderState = {
+interface ThemeProviderState {
   theme: Theme
   setTheme: (theme: Theme) => void
 }
 
-const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
-const THEME_VALUES: Theme[] = ["dark", "light", "system"]
-
+const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 const ThemeProviderContext = React.createContext<
   ThemeProviderState | undefined
 >(undefined)
 
 function isTheme(value: string | null): value is Theme {
-  if (value === null) {
-    return false
-  }
-
-  return THEME_VALUES.includes(value as Theme)
+  return value === 'dark' || value === 'light' || value === 'system'
 }
 
 function getSystemTheme(): ResolvedTheme {
   if (window.matchMedia(COLOR_SCHEME_QUERY).matches) {
-    return "dark"
+    return 'dark'
   }
 
-  return "light"
+  return 'light'
 }
 
 function disableTransitionsTemporarily() {
-  const style = document.createElement("style")
+  const style = document.createElement('style')
   style.appendChild(
     document.createTextNode(
-      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}"
-    )
+      '*,*::before,*::after{-webkit-transition:none!important;transition:none!important}',
+    ),
   )
   document.head.appendChild(style)
 
@@ -68,7 +62,7 @@ function isEditableTarget(target: EventTarget | null) {
   }
 
   const editableParent = target.closest(
-    "input, textarea, select, [contenteditable='true']"
+    'input, textarea, select, [contenteditable=\'true\']',
   )
   if (editableParent) {
     return true
@@ -79,12 +73,12 @@ function isEditableTarget(target: EventTarget | null) {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
-  storageKey = "theme",
+  defaultTheme = 'system',
+  storageKey = 'theme',
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
+  const [currentTheme, setCurrentTheme] = React.useState<Theme>(() => {
     const storedTheme = localStorage.getItem(storageKey)
     if (isTheme(storedTheme)) {
       return storedTheme
@@ -96,48 +90,48 @@ export function ThemeProvider({
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
-      setThemeState(nextTheme)
+      setCurrentTheme(nextTheme)
     },
-    [storageKey]
+    [storageKey],
   )
 
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
       const root = document.documentElement
-      const resolvedTheme =
-        nextTheme === "system" ? getSystemTheme() : nextTheme
+      const resolvedTheme
+        = nextTheme === 'system' ? getSystemTheme() : nextTheme
       const restoreTransitions = disableTransitionOnChange
         ? disableTransitionsTemporarily()
         : null
 
-      root.classList.remove("light", "dark")
+      root.classList.remove('light', 'dark')
       root.classList.add(resolvedTheme)
 
       if (restoreTransitions) {
         restoreTransitions()
       }
     },
-    [disableTransitionOnChange]
+    [disableTransitionOnChange],
   )
 
   React.useEffect(() => {
-    applyTheme(theme)
+    applyTheme(currentTheme)
 
-    if (theme !== "system") {
+    if (currentTheme !== 'system') {
       return undefined
     }
 
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
     const handleChange = () => {
-      applyTheme("system")
+      applyTheme('system')
     }
 
-    mediaQuery.addEventListener("change", handleChange)
+    mediaQuery.addEventListener('change', handleChange)
 
     return () => {
-      mediaQuery.removeEventListener("change", handleChange)
+      mediaQuery.removeEventListener('change', handleChange)
     }
-  }, [theme, applyTheme])
+  }, [currentTheme, applyTheme])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -153,29 +147,29 @@ export function ThemeProvider({
         return
       }
 
-      if (event.key.toLowerCase() !== "d") {
+      if (event.key.toLowerCase() !== 'd') {
         return
       }
 
-      setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === "dark"
-            ? "light"
-            : currentTheme === "light"
-              ? "dark"
-              : getSystemTheme() === "dark"
-                ? "light"
-                : "dark"
+      setCurrentTheme((activeTheme) => {
+        const nextTheme
+          = activeTheme === 'dark'
+            ? 'light'
+            : activeTheme === 'light'
+              ? 'dark'
+              : getSystemTheme() === 'dark'
+                ? 'light'
+                : 'dark'
 
         localStorage.setItem(storageKey, nextTheme)
         return nextTheme
       })
     }
 
-    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener('keydown', handleKeyDown)
     }
   }, [storageKey])
 
@@ -190,40 +184,40 @@ export function ThemeProvider({
       }
 
       if (isTheme(event.newValue)) {
-        setThemeState(event.newValue)
+        setCurrentTheme(event.newValue)
         return
       }
 
-      setThemeState(defaultTheme)
+      setCurrentTheme(defaultTheme)
     }
 
-    window.addEventListener("storage", handleStorageChange)
+    window.addEventListener('storage', handleStorageChange)
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange)
+      window.removeEventListener('storage', handleStorageChange)
     }
   }, [defaultTheme, storageKey])
 
   const value = React.useMemo(
     () => ({
-      theme,
+      theme: currentTheme,
       setTheme,
     }),
-    [theme, setTheme]
+    [currentTheme, setTheme],
   )
 
   return (
-    <ThemeProviderContext.Provider {...props} value={value}>
+    <ThemeProviderContext {...props} value={value}>
       {children}
-    </ThemeProviderContext.Provider>
+    </ThemeProviderContext>
   )
 }
 
-export const useTheme = () => {
-  const context = React.useContext(ThemeProviderContext)
+export function useTheme() {
+  const context = React.use(ThemeProviderContext)
 
   if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider")
+    throw new Error('useTheme must be used within a ThemeProvider')
   }
 
   return context
