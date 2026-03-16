@@ -18,6 +18,7 @@ import {
 import { ArrowDown, ArrowRight, ArrowUp, Box, Download, Grip, Maximize2, Minimize2, Move, PanelsTopLeft, Search, Shapes, Square } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
+import { useTheme } from '@/components/theme-provider'
 import {
   createBoardFromPreset,
   mapBoardColor,
@@ -47,6 +48,7 @@ interface BoardCanvasProps {
   color: string
   isSelected: boolean
   isActive: boolean
+  isDarkTheme: boolean
   canvasTransform: ViewTransform
   onBoardPointerDown: (
     event: ReactPointerEvent<SVGPolygonElement>,
@@ -157,6 +159,7 @@ function BoardCanvas({
   color,
   isSelected,
   isActive,
+  isDarkTheme,
   canvasTransform,
   onBoardPointerDown,
   onPointMove,
@@ -176,7 +179,9 @@ function BoardCanvas({
   )
 
   const fill = `color-mix(in oklch, ${color} 18%, white)`
-  const stroke = isActive ? '#111111' : color
+  const stroke = isActive
+    ? isDarkTheme ? '#f5f5f4' : '#111111'
+    : color
   const strokeWidth = isActive ? 2.4 : isSelected ? 1.8 : 1.2
 
   return (
@@ -203,7 +208,7 @@ function BoardCanvas({
                 cx={worldPoint.x}
                 cy={worldPoint.y}
                 r={6}
-                fill="white"
+                fill={isDarkTheme ? '#1c1917' : 'white'}
                 stroke={color}
                 strokeWidth={2}
                 className="cursor-grab active:cursor-grabbing"
@@ -251,7 +256,7 @@ function BoardCanvas({
 function Field({ label, children }: FieldProps) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[8px] font-semibold uppercase tracking-[0.22em] text-black/45">
+      <span className="mb-1 block text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
         {label}
       </span>
       {children}
@@ -268,7 +273,7 @@ function NumberInput({ value, onChange }: NumberInputProps) {
         const nextValue = Number(event.target.value)
         onChange(Number.isFinite(nextValue) ? nextValue : 0)
       }}
-      className="h-8 w-full border border-black/10 bg-white px-2.5 text-[12px] outline-none focus:border-black"
+      className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
     />
   )
 }
@@ -288,7 +293,7 @@ function IconToggleGroup<TValue extends string>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="flex items-center border border-black/10 bg-white/88 p-0.5 shadow-[0_14px_36px_rgba(0,0,0,0.14)] backdrop-blur-sm"
+      className="flex items-center border border-border bg-background/88 p-0.5 shadow-[0_14px_36px_rgba(0,0,0,0.14)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
     >
       {options.map(option => (
         <div key={option.value} className="group relative">
@@ -299,14 +304,14 @@ function IconToggleGroup<TValue extends string>({
             aria-label={option.label}
             title={option.label}
             className={`inline-flex size-7 items-center justify-center transition-colors ${value === option.value
-              ? 'bg-black text-white'
-              : 'text-black/58 hover:bg-black/6 hover:text-black'
+              ? 'bg-foreground text-background'
+              : 'text-foreground/58 hover:bg-muted hover:text-foreground'
             }`}
             onClick={() => onChange(option.value)}
           >
             <option.icon className="size-3.5" />
           </button>
-          <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-black/10 bg-white px-1.5 py-1 text-[10px] text-black opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100">
+          <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-border bg-popover px-1.5 py-1 text-[10px] text-popover-foreground opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
             {option.label}
           </span>
         </div>
@@ -344,12 +349,12 @@ function WorkspaceModeSwitch({
         type="button"
         aria-label={`Workspace mode: ${currentMode.label}`}
         title={currentMode.label}
-        className="inline-flex size-8 items-center justify-center border border-black/10 bg-black text-white shadow-[0_14px_36px_rgba(0,0,0,0.14)] transition-colors hover:bg-black/88"
+        className="inline-flex size-8 items-center justify-center border border-border bg-foreground text-background shadow-[0_14px_36px_rgba(0,0,0,0.14)] transition-colors hover:opacity-90 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
         onClick={cycleMode}
       >
         <currentMode.icon className="size-4" />
       </button>
-      <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-black/10 bg-white px-1.5 py-1 text-[10px] text-black opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100">
+      <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-border bg-popover px-1.5 py-1 text-[10px] text-popover-foreground opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
         {currentMode.label}
       </span>
     </div>
@@ -363,6 +368,7 @@ export function EditorPage({
   onDocumentChange,
   onExportJson,
 }: EditorPageProps) {
+  const { resolvedTheme } = useTheme()
   const selectedBoardIds = selection.selectedBoardIds
   const activeBoardId = selection.activeBoardId
   const selectedBoard = document.boards.find(board => board.id === activeBoardId)
@@ -590,9 +596,9 @@ export function EditorPage({
     heightClass: string,
     options?: { compact?: boolean, showInsetControls?: boolean },
   ) => (
-    <div className="relative h-full overflow-hidden bg-[linear-gradient(135deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px)]">
+    <div className="relative h-full overflow-hidden bg-[linear-gradient(135deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px)] dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px)]">
       <div className="pointer-events-none absolute top-2 right-2 z-10 flex items-center gap-1.5">
-        <div className="pointer-events-auto flex items-center gap-1 bg-white/92 p-0.5 shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+        <div className="pointer-events-auto flex items-center gap-1 bg-background/92 p-0.5 shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
           <Button
             variant="outline"
             size="sm"
@@ -626,7 +632,7 @@ export function EditorPage({
             <Move className="size-3.5" />
           </Button>
           {!options?.compact
-            ? <span className="min-w-10 px-1 text-right text-[10px] text-black/55">{getZoomLabel(canvasTransform.scale)}</span>
+            ? <span className="min-w-10 px-1 text-right text-[10px] text-foreground/55">{getZoomLabel(canvasTransform.scale)}</span>
             : null}
           {options?.showInsetControls
             ? (
@@ -643,7 +649,7 @@ export function EditorPage({
                   </Button>
                   <button
                     type="button"
-                    className="inline-flex size-6 items-center justify-center border border-black/10 bg-white text-black transition-colors hover:bg-black hover:text-white"
+                    className="inline-flex size-6 items-center justify-center border border-border bg-background text-foreground transition-colors hover:bg-foreground hover:text-background"
                     onPointerDown={startInsetDrag}
                     onDoubleClick={(event) => {
                       event.preventDefault()
@@ -661,7 +667,7 @@ export function EditorPage({
       <div className="overscroll-contain">
         <svg
           viewBox={canvasViewBox}
-          className={`${heightClass} w-full cursor-grab bg-[oklch(0.985_0.005_85)] active:cursor-grabbing`}
+          className={`${heightClass} w-full cursor-grab bg-[oklch(0.985_0.005_85)] active:cursor-grabbing dark:bg-[oklch(0.19_0.008_84)]`}
           onPointerDown={startCanvasBackgroundInteraction}
           onWheelCapture={handleWheelZoom}
         >
@@ -673,6 +679,7 @@ export function EditorPage({
                 color={mapBoardColor(index)}
                 isSelected={selectedBoardIds.includes(board.id)}
                 isActive={board.id === activeBoardId}
+                isDarkTheme={resolvedTheme === 'dark'}
                 canvasTransform={canvasTransform}
                 onBoardPointerDown={handleBoardPointerDown}
                 onPointDragStart={() => onSelectionChange(selectSingleBoard(board.id))}
@@ -698,7 +705,7 @@ export function EditorPage({
   return (
     <AppShell route="editor">
       <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[192px_minmax(0,1fr)_236px]">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-black/10 bg-white/80 p-2">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-border bg-background/80 p-2">
           <SectionHeader
             eyebrow="Boards"
             title="Pattern"
@@ -713,10 +720,10 @@ export function EditorPage({
                   type="button"
                   key={board.id}
                   className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
-                    ? 'border-black bg-[oklch(0.95_0.02_84)]'
+                    ? 'border-foreground bg-muted'
                     : selected
-                      ? 'border-black/30 bg-[oklch(0.975_0.01_84)]'
-                      : 'border-black/10 bg-white hover:bg-black/5'
+                      ? 'border-foreground/30 bg-muted/55'
+                      : 'border-border bg-card hover:bg-muted/45'
                   }`}
                   onClick={(event) => {
                     if (event.metaKey || event.ctrlKey) {
@@ -735,7 +742,7 @@ export function EditorPage({
                     <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
                       {board.name}
                     </span>
-                    <span className="mt-0.5 block text-[10px] text-black/55">
+                    <span className="mt-0.5 block text-[10px] text-foreground/55">
                       {formatMillimeters(board.thickness)}
                     </span>
                   </span>
@@ -744,8 +751,8 @@ export function EditorPage({
             })}
           </div>
 
-          <div className="mt-1.5 border-t border-black/10 pt-1.5">
-            <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-black/45">
+          <div className="mt-1.5 border-t border-border pt-1.5">
+            <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
               Add board
             </p>
             <div className="mt-1.5 space-y-1">
@@ -753,7 +760,7 @@ export function EditorPage({
                 <button
                   type="button"
                   key={preset.id}
-                  className="w-full border border-black/10 bg-white px-2 py-1.5 text-left hover:bg-black/5"
+                  className="w-full border border-border bg-card px-2 py-1.5 text-left hover:bg-muted/45"
                   onClick={() => addBoard(preset.id)}
                 >
                   <span className="block text-[11px] font-semibold tracking-[-0.03em]">
@@ -775,7 +782,7 @@ export function EditorPage({
           </div>
         </aside>
 
-        <section className="relative flex min-h-0 flex-col overflow-hidden border border-black/10 bg-white/85">
+        <section className="relative flex min-h-0 flex-col overflow-hidden border border-border bg-background/85">
           <div className="min-h-0 flex-1 overflow-hidden">
             {workspaceMode === '2d'
               ? render2DCanvas('h-full')
@@ -809,7 +816,7 @@ export function EditorPage({
                       canvasClassName="h-full min-h-[520px]"
                     />
                     <div
-                      className={`absolute top-2 right-2 z-10 overflow-hidden bg-white/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm ${isInsetDragging ? '' : 'transition-all'} ${isInsetExpanded
+                      className={`absolute top-2 right-2 z-10 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-all'} ${isInsetExpanded
                         ? 'w-[min(52vw,720px)]'
                         : 'w-[min(24vw,320px)]'
                       }`}
@@ -827,7 +834,7 @@ export function EditorPage({
               : null}
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center pb-3">
-            <div className="pointer-events-auto flex items-center gap-1.5 bg-white/94 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-sm">
+            <div className="pointer-events-auto flex items-center gap-1.5 bg-background/94 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)]">
               <WorkspaceModeSwitch value={workspaceMode} onChange={setWorkspaceMode} />
               {workspaceMode !== '2d'
                 ? (
@@ -843,7 +850,7 @@ export function EditorPage({
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-r border-black/10 bg-white/80 p-2">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-r border-border bg-background/80 p-2">
           <SectionHeader
             eyebrow="Inspector"
             title={selectedBoard?.name ?? 'Board'}
@@ -860,7 +867,7 @@ export function EditorPage({
                           ...selectedBoard,
                           name: event.target.value,
                         })}
-                      className="h-8 w-full border border-black/10 bg-white px-2.5 text-[12px] outline-none focus:border-black"
+                      className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
                     />
                   </Field>
 
@@ -927,10 +934,10 @@ export function EditorPage({
                           ...selectedBoard,
                           material: event.target.value,
                         })}
-                      className="h-8 w-full border border-black/10 bg-white px-2.5 text-[12px] outline-none focus:border-black"
+                      className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
                     />
                   </Field>
-                  <div className="flex items-center gap-1.5 border border-black/10 bg-[oklch(0.97_0.015_85)] px-2.5 py-1.5 text-[10px] text-black/55">
+                  <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
                     <Shapes className="size-3" />
                     <span>
                       {getOutlinePoints(selectedBoard).length}

@@ -15,6 +15,7 @@ import { getDocumentBounds, sampleShapePoints } from '@xtool-demo/core'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
+import { useTheme } from '@/components/theme-provider'
 import {
   mapBoardColor,
   moveBoardsByDelta,
@@ -42,6 +43,7 @@ interface BoardMeshProps {
   board: Board
   color: string
   isSelected: boolean
+  resolvedTheme: 'dark' | 'light'
   onPointerDown: (event: ThreeEvent<PointerEvent>, board: Board) => void
   onPointerMove: (event: ThreeEvent<PointerEvent>) => void
   onPointerUp: (event: ThreeEvent<PointerEvent>) => void
@@ -49,6 +51,7 @@ interface BoardMeshProps {
 
 interface SceneProps extends BoardPreview3DProps {
   controlsRef: React.RefObject<CameraControlsImpl | null>
+  resolvedTheme: 'dark' | 'light'
 }
 
 interface DragState {
@@ -153,6 +156,7 @@ function BoardMesh({
   board,
   color,
   isSelected,
+  resolvedTheme,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -193,7 +197,7 @@ function BoardMesh({
       {isSelected
         ? (
             <Edges
-              color="#111111"
+              color={resolvedTheme === 'dark' ? '#f5f5f4' : '#111111'}
               scale={1.008}
               threshold={24}
             />
@@ -209,6 +213,7 @@ function Scene({
   onSelectionChange,
   onDocumentChange,
   controlsRef,
+  resolvedTheme,
 }: SceneProps) {
   const { camera, gl } = useThree()
   const dragStateRef = useRef<DragState | null>(null)
@@ -322,19 +327,19 @@ function Scene({
 
   return (
     <>
-      <color attach="background" args={['#f3efe6']} />
-      <ambientLight intensity={1.05} />
-      <directionalLight intensity={1.28} position={[480, -320, 520]} />
-      <directionalLight intensity={0.4} position={[-260, 220, 220]} />
+      <color attach="background" args={[resolvedTheme === 'dark' ? '#191816' : '#f3efe6']} />
+      <ambientLight intensity={resolvedTheme === 'dark' ? 1.22 : 1.05} />
+      <directionalLight intensity={resolvedTheme === 'dark' ? 1.48 : 1.28} position={[480, -320, 520]} />
+      <directionalLight intensity={resolvedTheme === 'dark' ? 0.62 : 0.4} position={[-260, 220, 220]} />
       <Grid
-        cellColor="#d6d3d1"
+        cellColor={resolvedTheme === 'dark' ? '#3f3b37' : '#d6d3d1'}
         cellSize={40}
         fadeDistance={1800}
         fadeStrength={1.4}
         infiniteGrid
         position={[0, 0, -0.2]}
         rotation={[Math.PI / 2, 0, 0]}
-        sectionColor="#78716c"
+        sectionColor={resolvedTheme === 'dark' ? '#928a82' : '#78716c'}
         sectionSize={200}
       />
       {document.boards.map((board, index) => (
@@ -343,6 +348,7 @@ function Scene({
           board={board}
           color={mapBoardColor(index)}
           isSelected={selection.selectedBoardIds.includes(board.id)}
+          resolvedTheme={resolvedTheme}
           onPointerDown={handleBoardPointerDown}
           onPointerMove={handleBoardPointerMove}
           onPointerUp={handleBoardPointerUp}
@@ -360,7 +366,7 @@ function Scene({
       <GizmoHelper alignment="bottom-right" margin={[88, 88]}>
         <GizmoViewport
           axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-          labelColor="#111827"
+          labelColor={resolvedTheme === 'dark' ? '#f5f5f4' : '#111827'}
         />
       </GizmoHelper>
     </>
@@ -377,6 +383,7 @@ export function BoardPreview3D({
 }: BoardPreview3DProps) {
   const controlsRef = useRef<CameraControlsImpl | null>(null)
   const initializedRef = useRef(false)
+  const { resolvedTheme } = useTheme()
 
   const applyPreset = useCallback((preset: CameraPreset) => {
     const controls = controlsRef.current
@@ -414,7 +421,7 @@ export function BoardPreview3D({
   }, [applyPreset, viewPreset])
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden border border-black/10 bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))]">
+    <div className="relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))] dark:bg-[linear-gradient(180deg,oklch(0.24_0.01_84),oklch(0.16_0.01_82))]">
       <div className={canvasClassName ?? 'h-[380px]'}>
         <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
           <Scene
@@ -423,6 +430,7 @@ export function BoardPreview3D({
             onSelectionChange={onSelectionChange}
             onDocumentChange={onDocumentChange}
             controlsRef={controlsRef}
+            resolvedTheme={resolvedTheme}
           />
         </Canvas>
       </div>

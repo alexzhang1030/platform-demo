@@ -41,7 +41,7 @@ export function GeneratorPage({
   return (
     <AppShell route="generator">
       <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-black/10 bg-white/80 p-2">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-border bg-background/80 p-2">
           <SectionHeader
             eyebrow="Generator"
             title="Import"
@@ -49,7 +49,7 @@ export function GeneratorPage({
           />
 
           <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-auto pr-0.5">
-            <label className="flex cursor-pointer items-center justify-center gap-2 border border-dashed border-black/25 bg-[oklch(0.97_0.015_85)] px-2.5 py-3 text-[11px] font-medium text-black/75 transition-colors hover:bg-[oklch(0.95_0.02_84)]">
+            <label className="flex cursor-pointer items-center justify-center gap-2 border border-dashed border-border bg-muted/60 px-2.5 py-3 text-[11px] font-medium text-foreground/75 transition-colors hover:bg-muted">
               <FileUp className="size-4" />
               Upload pattern.json
               <input
@@ -77,23 +77,23 @@ export function GeneratorPage({
               </Button>
             </div>
 
-            <div className="border border-black/10 bg-white">
-              <div className="flex items-center justify-between border-b border-black/10 px-2.5 py-2">
+            <div className="border border-border bg-card">
+              <div className="flex items-center justify-between border-b border-border px-2.5 py-2">
                 <h3 className="text-[12px] font-semibold tracking-[-0.03em]">
                   Parse
                 </h3>
-                <span className="text-[10px] text-black/50">
+                <span className="text-[10px] text-foreground/50">
                   v
                   {document.version}
                 </span>
               </div>
-              <div className="p-2.5 text-[12px] text-black/70">
+              <div className="p-2.5 text-[12px] text-foreground/72">
                 {parseIssues.length === 0
                   ? (
                       <p>Valid pattern document.</p>
                     )
                   : (
-                      <ul className="space-y-1.5 text-[12px] text-[oklch(0.52_0.18_28)]">
+                      <ul className="space-y-1.5 text-[12px] text-destructive">
                         {parseIssues.map(issue => (
                           <li key={issue}>{issue}</li>
                         ))}
@@ -102,12 +102,12 @@ export function GeneratorPage({
               </div>
             </div>
 
-            <div className="border border-black/10 bg-white p-2.5">
+            <div className="border border-border bg-card p-2.5">
               <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold tracking-[-0.03em]">
                 <MoveRight className="size-4" />
                 JSON
               </div>
-              <pre className="max-h-80 overflow-auto text-[11px] leading-5 text-black/60">
+              <pre className="max-h-80 overflow-auto text-[11px] leading-5 text-foreground/62">
                 {lastImportedJson}
               </pre>
             </div>
@@ -115,13 +115,13 @@ export function GeneratorPage({
         </aside>
 
         <section className="grid min-h-0 gap-0 xl:grid-rows-[minmax(0,1fr)_200px]">
-          <div className="flex min-h-0 flex-col overflow-hidden border border-black/10 bg-white/85 p-2">
+          <div className="flex min-h-0 flex-col overflow-hidden border border-border bg-background/85 p-2">
             <SectionHeader
               eyebrow="Preview"
               title="Layout"
               meta="mm"
             />
-            <div className="mt-1.5 min-h-0 overflow-hidden border border-black/10 bg-[oklch(0.985_0.005_85)]">
+            <div className="mt-1.5 min-h-0 overflow-hidden border border-border bg-[oklch(0.985_0.005_85)] dark:bg-[oklch(0.18_0.01_85)]">
               <svg viewBox={canvasViewBox} className="h-full min-h-[320px] w-full">
                 {document.boards.map((board, index) => {
                   const points = transformBoardPoints(board)
@@ -139,12 +139,12 @@ export function GeneratorPage({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col overflow-hidden border-x border-b border-black/10 bg-white/85 p-2">
+          <div className="flex min-h-0 flex-col overflow-hidden border-x border-b border-border bg-background/85 p-2">
             <SectionHeader
               eyebrow="Markup"
               title="SVG"
             />
-            <pre className="mt-1.5 min-h-0 flex-1 overflow-auto border border-black/10 bg-[oklch(0.97_0.015_85)] p-2 text-[10px] leading-4.5 text-black/60 whitespace-pre-wrap break-all">
+            <pre className="mt-1.5 min-h-0 flex-1 overflow-auto border border-border bg-muted/55 p-2 text-[10px] leading-4.5 text-foreground/62 whitespace-pre-wrap break-all">
               {svgMarkup}
             </pre>
           </div>
