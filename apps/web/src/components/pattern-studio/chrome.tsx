@@ -66,39 +66,39 @@ export function StageCard({
 
 export function SectionHeader({ eyebrow, title, meta }: SectionHeaderProps) {
   return (
-    <div className="flex items-end justify-between gap-4 border-b border-black/10 pb-3">
+    <div className="flex items-end justify-between gap-3 border-b border-black/10 pb-2">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-black/45">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-black/45">
           {eyebrow}
         </p>
-        <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-black">
+        <h2 className="mt-1 text-base font-semibold tracking-[-0.04em] text-black">
           {title}
         </h2>
       </div>
-      {meta ? <p className="text-xs text-black/55">{meta}</p> : null}
+      {meta ? <p className="text-[11px] text-black/55">{meta}</p> : null}
     </div>
   )
 }
 
 export function AppShell({ route, children }: AppShellProps) {
   return (
-    <div className="min-h-svh bg-[linear-gradient(180deg,oklch(0.98_0.01_85),oklch(0.95_0.02_84))] text-black">
-      <div className="mx-auto flex min-h-svh max-w-[1700px] flex-col px-4 py-4 lg:px-6">
-        <header className="flex flex-col gap-4 border border-black/10 bg-white/85 px-4 py-4 backdrop-blur-sm lg:flex-row lg:items-center lg:justify-between">
+    <div className="h-svh overflow-hidden bg-[linear-gradient(180deg,oklch(0.98_0.01_85),oklch(0.95_0.02_84))] text-black">
+      <div className="mx-auto flex h-full max-w-[1800px] min-h-0 flex-col px-3 py-3 lg:px-4">
+        <header className="flex shrink-0 items-center justify-between gap-3 border border-black/10 bg-white/85 px-3 py-2 backdrop-blur-sm">
           <div className="flex items-center gap-4">
             <button
               type="button"
               className="flex items-center gap-3 text-left"
               onClick={() => navigateTo('/')}
             >
-              <div className="flex size-10 items-center justify-center border border-black/10 bg-black text-white">
-                <Layers2 className="size-4" />
+              <div className="flex size-8 items-center justify-center border border-black/10 bg-black text-white">
+                <Layers2 className="size-3.5" />
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-black/45">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-black/45">
                   Studio / pattern
                 </p>
-                <h1 className="text-lg font-semibold tracking-[-0.04em]">
+                <h1 className="text-sm font-semibold tracking-[-0.04em]">
                   Board Pattern Studio
                 </h1>
               </div>
@@ -108,19 +108,21 @@ export function AppShell({ route, children }: AppShellProps) {
           <nav className="flex flex-wrap gap-2">
             <Button
               variant={route === 'editor' ? 'default' : 'outline'}
+              size="sm"
               onClick={() => navigateTo('/editor')}
             >
               Editor
             </Button>
             <Button
               variant={route === 'generator' ? 'default' : 'outline'}
+              size="sm"
               onClick={() => navigateTo('/generator')}
             >
               Generator
             </Button>
           </nav>
         </header>
-        <div className="mt-4 flex-1">{children}</div>
+        <div className="mt-3 min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
     </div>
   )

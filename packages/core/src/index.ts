@@ -27,6 +27,32 @@ export interface PreviewBoard {
   faces: PreviewFace[]
 }
 
+export type PreviewViewMode = 'front' | 'isometric' | 'side' | 'top'
+
+interface PreviewProjection {
+  depthX: number
+  depthY: number
+}
+
+const PREVIEW_PROJECTIONS: Record<PreviewViewMode, PreviewProjection> = {
+  front: {
+    depthX: 0,
+    depthY: -1,
+  },
+  isometric: {
+    depthX: 0.75,
+    depthY: -0.45,
+  },
+  side: {
+    depthX: 1,
+    depthY: 0,
+  },
+  top: {
+    depthX: 0.18,
+    depthY: -1.15,
+  },
+}
+
 export function rotatePoint(point: ControlPoint, angle: number): ControlPoint {
   const radians = (angle * Math.PI) / 180
   const cos = Math.cos(radians)
@@ -202,17 +228,25 @@ export function buildBoardSvgPath(board: Board): string {
   return [outlinePath, ...holePaths].join(' ')
 }
 
-function projectPoint(point: ControlPoint, depth: number): ControlPoint {
+function projectPoint(
+  point: ControlPoint,
+  depth: number,
+  projection: PreviewProjection,
+): ControlPoint {
   return {
-    x: point.x + depth * 0.75,
-    y: point.y - depth * 0.45,
+    x: point.x + depth * projection.depthX,
+    y: point.y + depth * projection.depthY,
   }
 }
 
-export function buildPreviewBoard(board: Board): PreviewBoard {
+export function buildPreviewBoard(
+  board: Board,
+  viewMode: PreviewViewMode = 'isometric',
+): PreviewBoard {
   const points = transformBoardPoints(board)
   const depth = Math.max(12, board.thickness * 1.3)
-  const projected = points.map(point => projectPoint(point, depth))
+  const projection = PREVIEW_PROJECTIONS[viewMode]
+  const projected = points.map(point => projectPoint(point, depth, projection))
 
   const topPath
     = `${points
@@ -238,7 +272,14 @@ export function buildPreviewBoard(board: Board): PreviewBoard {
       `${currentTop.x},${currentTop.y}`,
     ].join(' ')
 
-    const shade = next.y > current.y ? 'front' : 'side'
+    const shade
+      = viewMode === 'top'
+        ? 'top'
+        : viewMode === 'front'
+          ? 'front'
+          : next.y > current.y
+            ? 'front'
+            : 'side'
     faces.push({
       id: `${board.id}-${index}`,
       points: facePoints,
@@ -273,9 +314,9 @@ export function generateSvgDocument(document: PatternDocument): string {
   const paths = document.boards
     .map((board) => {
       const transformed = transformBoardPoints(board)
-      const d = [...transformed
+      const d = `${transformed
         .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-        .join(' '), ...' Z']
+        .join(' ')} Z`
 
       return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.4" />`
     })

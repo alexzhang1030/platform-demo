@@ -1,5 +1,8 @@
 import type { PatternDocument } from '@xtool-demo/protocol'
-import type { RouteKey } from '@/lib/pattern-studio'
+import type {
+  EditorSelectionState,
+  RouteKey,
+} from '@/lib/pattern-studio'
 import { generateSvgDocument } from '@xtool-demo/core'
 import { createDefaultPatternDocument, parsePatternJson, stringifyPatternDocument } from '@xtool-demo/protocol'
 
@@ -7,7 +10,11 @@ import { useEffect, useState, useTransition } from 'react'
 import { EditorPage } from '@/components/pattern-studio/editor-page'
 import { GeneratorPage } from '@/components/pattern-studio/generator-page'
 import { HomePage } from '@/components/pattern-studio/home-page'
-import { getRouteFromPath } from '@/lib/pattern-studio'
+import {
+  createEditorSelection,
+  getRouteFromPath,
+  normalizeEditorSelection,
+} from '@/lib/pattern-studio'
 import { downloadTextFile } from '@/lib/utils'
 
 export function App() {
@@ -20,8 +27,8 @@ export function App() {
   const [generatorDocument, setGeneratorDocument] = useState<PatternDocument>(
     createDefaultPatternDocument,
   )
-  const [selectedBoardId, setSelectedBoardId] = useState(
-    editorDocument.boards[0]?.id ?? '',
+  const [selection, setSelection] = useState<EditorSelectionState>(() =>
+    createEditorSelection(editorDocument.boards[0]?.id ?? ''),
   )
   const [lastImportedJson, setLastImportedJson] = useState(() =>
     stringifyPatternDocument(generatorDocument),
@@ -44,6 +51,7 @@ export function App() {
   function handleEditorDocumentChange(nextDocument: PatternDocument) {
     startTransition(() => {
       setEditorDocument(nextDocument)
+      setSelection(current => normalizeEditorSelection(nextDocument, current))
     })
   }
 
@@ -86,8 +94,8 @@ export function App() {
     return (
       <EditorPage
         document={editorDocument}
-        selectedBoardId={selectedBoardId}
-        onSelectBoard={setSelectedBoardId}
+        selection={selection}
+        onSelectionChange={setSelection}
         onDocumentChange={handleEditorDocumentChange}
         onExportJson={handleExportJson}
       />
