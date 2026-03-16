@@ -1,17 +1,16 @@
-import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Board, ControlPoint, PatternDocument } from '@xtool-demo/protocol'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
 import {
-  CameraControls,
   Edges,
   GizmoHelper,
   GizmoViewport,
   Grid,
+  OrbitControls,
   PerspectiveCamera,
 } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { getDocumentBounds, sampleShapePoints } from '@xtool-demo/core'
+import { sampleShapePoints } from '@xtool-demo/core'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
@@ -28,15 +27,7 @@ interface BoardPreview3DProps {
   selection: EditorSelectionState
   onSelectionChange: (selection: EditorSelectionState) => void
   onDocumentChange: (document: PatternDocument) => void
-  viewPreset?: CameraPreset
   canvasClassName?: string
-}
-
-type CameraPreset = 'front' | 'isometric' | 'side' | 'top'
-
-interface CameraPose {
-  position: [number, number, number]
-  target: [number, number, number]
 }
 
 interface BoardMeshProps {
@@ -50,7 +41,7 @@ interface BoardMeshProps {
 }
 
 interface SceneProps extends BoardPreview3DProps {
-  controlsRef: React.RefObject<CameraControlsImpl | null>
+  controlsRef: React.RefObject<OrbitControlsHandle | null>
   resolvedTheme: 'dark' | 'light'
 }
 
@@ -58,6 +49,10 @@ interface DragState {
   document: PatternDocument
   selectedBoardIds: string[]
   startPoint: THREE.Vector3
+}
+
+interface OrbitControlsHandle {
+  enabled: boolean
 }
 
 function toBoardShape(points: ControlPoint[]) {
@@ -77,79 +72,6 @@ function toBoardShape(points: ControlPoint[]) {
 
   shape.closePath()
   return shape
-}
-
-function getBoardCenter(board: Board): [number, number, number] {
-  const points = sampleShapePoints(board.outline)
-  if (points.length === 0) {
-    return [board.transform.x, -board.transform.y, board.thickness / 2]
-  }
-
-  let minX = Number.POSITIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
-
-  for (const point of points) {
-    minX = Math.min(minX, point.x)
-    minY = Math.min(minY, point.y)
-    maxX = Math.max(maxX, point.x)
-    maxY = Math.max(maxY, point.y)
-  }
-
-  return [
-    board.transform.x + (minX + maxX) / 2,
-    -(board.transform.y + (minY + maxY) / 2),
-    board.thickness / 2,
-  ]
-}
-
-function getCameraPose(
-  document: PatternDocument,
-  activeBoardId: string,
-  preset: CameraPreset,
-): CameraPose {
-  const bounds = getDocumentBounds(document)
-  const selectedBoard = document.boards.find(board => board.id === activeBoardId)
-  const maxSpan = Math.max(bounds.width, bounds.height, 240)
-  const distance = maxSpan * 2.35
-  const target = selectedBoard
-    ? getBoardCenter(selectedBoard)
-    : getDocumentCenter(bounds)
-
-  if (preset === 'front') {
-    return {
-      position: [target[0], target[1] - distance, target[2] + distance * 0.34],
-      target,
-    }
-  }
-
-  if (preset === 'side') {
-    return {
-      position: [target[0] + distance, target[1], target[2] + distance * 0.26],
-      target,
-    }
-  }
-
-  if (preset === 'top') {
-    return {
-      position: [target[0], target[1], target[2] + distance * 1.62],
-      target,
-    }
-  }
-
-  return {
-    position: [target[0] + distance * 1.02, target[1] - distance * 0.96, target[2] + distance * 0.74],
-    target,
-  }
-}
-
-function getDocumentCenter(bounds: ReturnType<typeof getDocumentBounds>): [number, number, number] {
-  return [
-    bounds.minX + bounds.width / 2,
-    -(bounds.minY + bounds.height / 2),
-    0,
-  ]
 }
 
 function BoardMesh({
@@ -175,7 +97,9 @@ function BoardMesh({
   useEffect(() => () => geometry.dispose(), [geometry])
 
   const materialColor = isSelected
-    ? `color-mix(in oklch, ${color} 76%, white)`
+    ? resolvedTheme === 'dark'
+      ? `color-mix(in oklch, ${color} 84%, white)`
+      : `color-mix(in oklch, ${color} 76%, white)`
     : `color-mix(in oklch, ${color} 54%, white)`
 
   return (
@@ -189,16 +113,16 @@ function BoardMesh({
     >
       <meshStandardMaterial
         color={materialColor}
-        emissive={isSelected ? color : '#000000'}
-        emissiveIntensity={isSelected ? 0.34 : 0}
+        emissive={isSelected && resolvedTheme === 'dark' ? '#000000' : isSelected ? color : '#000000'}
+        emissiveIntensity={isSelected ? resolvedTheme === 'dark' ? 0.18 : 0.34 : 0}
         metalness={0.05}
         roughness={0.68}
       />
       {isSelected
         ? (
             <Edges
-              color={resolvedTheme === 'dark' ? '#f5f5f4' : '#111111'}
-              scale={1.008}
+              color="#111111"
+              scale={resolvedTheme === 'dark' ? 1.012 : 1.008}
               threshold={24}
             />
           )
@@ -335,8 +259,9 @@ function Scene({
         cellColor={resolvedTheme === 'dark' ? '#3f3b37' : '#d6d3d1'}
         cellSize={40}
         fadeDistance={1800}
-        fadeStrength={1.4}
+        fadeStrength={2}
         infiniteGrid
+        followCamera
         position={[0, 0, -0.2]}
         rotation={[Math.PI / 2, 0, 0]}
         sectionColor={resolvedTheme === 'dark' ? '#928a82' : '#78716c'}
@@ -354,14 +279,14 @@ function Scene({
           onPointerUp={handleBoardPointerUp}
         />
       ))}
-      <PerspectiveCamera makeDefault position={[520, -520, 360]} up={[0, 0, 1]} />
-      <CameraControls
+      <PerspectiveCamera fov={60} makeDefault position={[520, -520, 360]} up={[0, 0, 1]} />
+      <OrbitControls
         ref={controlsRef}
-        dollyToCursor
+        enableDamping
         makeDefault
         maxDistance={4200}
         minDistance={80}
-        smoothTime={0.45}
+        screenSpacePanning
       />
       <GizmoHelper alignment="bottom-right" margin={[88, 88]}>
         <GizmoViewport
@@ -378,47 +303,10 @@ export function BoardPreview3D({
   selection,
   onSelectionChange,
   onDocumentChange,
-  viewPreset = 'isometric',
   canvasClassName,
 }: BoardPreview3DProps) {
-  const controlsRef = useRef<CameraControlsImpl | null>(null)
-  const initializedRef = useRef(false)
   const { resolvedTheme } = useTheme()
-
-  const applyPreset = useCallback((preset: CameraPreset) => {
-    const controls = controlsRef.current
-    if (!controls) {
-      return
-    }
-
-    const pose = getCameraPose(document, selection.activeBoardId, preset)
-    controls.setLookAt(
-      pose.position[0],
-      pose.position[1],
-      pose.position[2],
-      pose.target[0],
-      pose.target[1],
-      pose.target[2],
-      true,
-    )
-  }, [document, selection.activeBoardId])
-
-  useEffect(() => {
-    if (initializedRef.current) {
-      return
-    }
-
-    initializedRef.current = true
-    applyPreset(viewPreset)
-  }, [applyPreset, viewPreset])
-
-  useEffect(() => {
-    if (!initializedRef.current) {
-      return
-    }
-
-    applyPreset(viewPreset)
-  }, [applyPreset, viewPreset])
+  const controlsRef = useRef<OrbitControlsHandle | null>(null)
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))] dark:bg-[linear-gradient(180deg,oklch(0.24_0.01_84),oklch(0.16_0.01_82))]">

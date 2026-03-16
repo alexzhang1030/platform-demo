@@ -15,7 +15,17 @@ import {
   rotatePoint,
   sampleShapePoints,
 } from '@xtool-demo/core'
-import { ArrowDown, ArrowRight, ArrowUp, Box, Download, Grip, Maximize2, Minimize2, Move, PanelsTopLeft, Search, Shapes, Square } from 'lucide-react'
+import {
+  Box,
+  Download,
+  Grip,
+  Maximize2,
+  Minimize2,
+  Move,
+  PanelsTopLeft,
+  Shapes,
+  Square,
+} from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
 import { useTheme } from '@/components/theme-provider'
@@ -86,7 +96,6 @@ interface InsetOffset {
 }
 
 type WorkspaceMode = '2d' | '3d' | 'split'
-type CameraPreset = 'front' | 'isometric' | 'side' | 'top'
 
 const MIN_SCALE = 0.45
 const MAX_SCALE = 3.5
@@ -97,12 +106,6 @@ const WORKSPACE_MODES: Array<IconToggleOption<WorkspaceMode>> = [
   { label: '3D', value: '3d', icon: Box },
   { label: '2D', value: '2d', icon: Square },
   { label: '3D + 2D', value: 'split', icon: PanelsTopLeft },
-]
-const CAMERA_PRESETS: Array<IconToggleOption<CameraPreset>> = [
-  { label: 'Iso', value: 'isometric', icon: Box },
-  { label: 'Front', value: 'front', icon: ArrowDown },
-  { label: 'Side', value: 'side', icon: ArrowRight },
-  { label: 'Top', value: 'top', icon: ArrowUp },
 ]
 
 function getOutlinePoints(board: Board) {
@@ -180,9 +183,13 @@ function BoardCanvas({
 
   const fill = `color-mix(in oklch, ${color} 18%, white)`
   const stroke = isActive
-    ? isDarkTheme ? '#f5f5f4' : '#111111'
+    ? '#111111'
     : color
-  const strokeWidth = isActive ? 2.4 : isSelected ? 1.8 : 1.2
+  const strokeWidth = isActive
+    ? isDarkTheme ? 3.2 : 2.4
+    : isSelected
+      ? isDarkTheme ? 2.2 : 1.8
+      : 1.2
 
   return (
     <g>
@@ -207,10 +214,10 @@ function BoardCanvas({
                 key={`${board.id}-${point.x}-${point.y}`}
                 cx={worldPoint.x}
                 cy={worldPoint.y}
-                r={6}
-                fill={isDarkTheme ? '#1c1917' : 'white'}
-                stroke={color}
-                strokeWidth={2}
+                r={isDarkTheme ? 7 : 6}
+                fill={isDarkTheme ? '#111111' : 'white'}
+                stroke={isDarkTheme ? '#f5f5f4' : color}
+                strokeWidth={isDarkTheme ? 2.6 : 2}
                 className="cursor-grab active:cursor-grabbing"
                 onPointerDown={(event) => {
                   event.preventDefault()
@@ -275,48 +282,6 @@ function NumberInput({ value, onChange }: NumberInputProps) {
       }}
       className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
     />
-  )
-}
-
-function IconToggleGroup<TValue extends string>({
-  ariaLabel,
-  options,
-  value,
-  onChange,
-}: {
-  ariaLabel: string
-  options: Array<IconToggleOption<TValue>>
-  value: TValue
-  onChange: (value: TValue) => void
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="flex items-center border border-border bg-background/88 p-0.5 shadow-[0_14px_36px_rgba(0,0,0,0.14)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
-    >
-      {options.map(option => (
-        <div key={option.value} className="group relative">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={value === option.value}
-            aria-label={option.label}
-            title={option.label}
-            className={`inline-flex size-7 items-center justify-center transition-colors ${value === option.value
-              ? 'bg-foreground text-background'
-              : 'text-foreground/58 hover:bg-muted hover:text-foreground'
-            }`}
-            onClick={() => onChange(option.value)}
-          >
-            <option.icon className="size-3.5" />
-          </button>
-          <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-border bg-popover px-1.5 py-1 text-[10px] text-popover-foreground opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
-            {option.label}
-          </span>
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -385,7 +350,6 @@ export function EditorPage({
     y: 0,
   })
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('split')
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('isometric')
   const [isInsetExpanded, setIsInsetExpanded] = useState(false)
   const [isInsetDragging, setIsInsetDragging] = useState(false)
   const [insetOffset, setInsetOffset] = useState<InsetOffset>({ x: 0, y: 0 })
@@ -603,30 +567,6 @@ export function EditorPage({
             variant="outline"
             size="sm"
             className="h-6 px-1.5 text-[10px]"
-            onClick={() =>
-              setCanvasTransform(current => ({
-                ...current,
-                scale: clamp(current.scale * ZOOM_OUT_FACTOR, MIN_SCALE, MAX_SCALE),
-              }))}
-          >
-            <Search className="size-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 px-1.5 text-[10px]"
-            onClick={() =>
-              setCanvasTransform(current => ({
-                ...current,
-                scale: clamp(current.scale * ZOOM_IN_FACTOR, MIN_SCALE, MAX_SCALE),
-              }))}
-          >
-            <Search className="size-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 px-1.5 text-[10px]"
             onClick={() => setCanvasTransform({ scale: 1, x: 0, y: 0 })}
           >
             <Move className="size-3.5" />
@@ -720,9 +660,9 @@ export function EditorPage({
                   type="button"
                   key={board.id}
                   className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
-                    ? 'border-foreground bg-muted'
+                    ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
                     : selected
-                      ? 'border-foreground/30 bg-muted/55'
+                      ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
                       : 'border-border bg-card hover:bg-muted/45'
                   }`}
                   onClick={(event) => {
@@ -795,7 +735,6 @@ export function EditorPage({
                     selection={selection}
                     onSelectionChange={onSelectionChange}
                     onDocumentChange={onDocumentChange}
-                    viewPreset={cameraPreset}
                     canvasClassName="h-full min-h-[520px]"
                   />
                 )
@@ -812,7 +751,6 @@ export function EditorPage({
                       selection={selection}
                       onSelectionChange={onSelectionChange}
                       onDocumentChange={onDocumentChange}
-                      viewPreset={cameraPreset}
                       canvasClassName="h-full min-h-[520px]"
                     />
                     <div
@@ -834,18 +772,8 @@ export function EditorPage({
               : null}
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center pb-3">
-            <div className="pointer-events-auto flex items-center gap-1.5 bg-background/94 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)]">
+            <div className="pointer-events-auto flex items-center bg-background/94 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)]">
               <WorkspaceModeSwitch value={workspaceMode} onChange={setWorkspaceMode} />
-              {workspaceMode !== '2d'
-                ? (
-                    <IconToggleGroup
-                      ariaLabel="3D view preset"
-                      options={CAMERA_PRESETS}
-                      value={cameraPreset}
-                      onChange={setCameraPreset}
-                    />
-                  )
-                : null}
             </div>
           </div>
         </section>
