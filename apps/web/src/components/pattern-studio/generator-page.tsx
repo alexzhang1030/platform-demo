@@ -40,16 +40,16 @@ export function GeneratorPage({
 
   return (
     <AppShell route="generator">
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="border border-black/10 bg-white/80 p-4">
+      <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[248px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-black/10 bg-white/80 p-2">
           <SectionHeader
             eyebrow="Generator"
-            title="Pattern import"
-            meta={`${document.boards.length} boards ready`}
+            title="Import"
+            meta={`${document.boards.length} boards`}
           />
 
-          <div className="mt-5 space-y-4">
-            <label className="flex cursor-pointer items-center justify-center gap-2 border border-dashed border-black/25 bg-[oklch(0.97_0.015_85)] px-4 py-6 text-sm font-medium text-black/75 transition-colors hover:bg-[oklch(0.95_0.02_84)]">
+          <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-auto pr-0.5">
+            <label className="flex cursor-pointer items-center justify-center gap-2 border border-dashed border-black/25 bg-[oklch(0.97_0.015_85)] px-2.5 py-3 text-[11px] font-medium text-black/75 transition-colors hover:bg-[oklch(0.95_0.02_84)]">
               <FileUp className="size-4" />
               Upload pattern.json
               <input
@@ -67,33 +67,33 @@ export function GeneratorPage({
               />
             </label>
 
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={onUseEditorDocument}>
-                Use editor output
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onUseEditorDocument}>
+                Use editor
               </Button>
-              <Button className="flex-1" onClick={onDownloadSvg}>
-                Download SVG
-                <Download />
+              <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onDownloadSvg}>
+                Export SVG
+                <Download className="size-3" />
               </Button>
             </div>
 
             <div className="border border-black/10 bg-white">
-              <div className="flex items-center justify-between border-b border-black/10 px-3 py-2">
-                <h3 className="text-sm font-semibold tracking-[-0.03em]">
-                  Validation
+              <div className="flex items-center justify-between border-b border-black/10 px-2.5 py-2">
+                <h3 className="text-[12px] font-semibold tracking-[-0.03em]">
+                  Parse
                 </h3>
-                <span className="text-xs text-black/50">
+                <span className="text-[10px] text-black/50">
                   v
                   {document.version}
                 </span>
               </div>
-              <div className="p-3 text-sm text-black/70">
+              <div className="p-2.5 text-[12px] text-black/70">
                 {parseIssues.length === 0
                   ? (
-                      <p>Document is valid. Ready to generate SVG output.</p>
+                      <p>Valid pattern document.</p>
                     )
                   : (
-                      <ul className="space-y-2 text-[13px] text-[oklch(0.52_0.18_28)]">
+                      <ul className="space-y-1.5 text-[12px] text-[oklch(0.52_0.18_28)]">
                         {parseIssues.map(issue => (
                           <li key={issue}>{issue}</li>
                         ))}
@@ -102,27 +102,27 @@ export function GeneratorPage({
               </div>
             </div>
 
-            <div className="border border-black/10 bg-white p-3">
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-[-0.03em]">
+            <div className="border border-black/10 bg-white p-2.5">
+              <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold tracking-[-0.03em]">
                 <MoveRight className="size-4" />
-                Imported JSON
+                JSON
               </div>
-              <pre className="max-h-90 overflow-auto text-xs leading-6 text-black/60">
+              <pre className="max-h-80 overflow-auto text-[11px] leading-5 text-black/60">
                 {lastImportedJson}
               </pre>
             </div>
           </div>
         </aside>
 
-        <section className="flex flex-col gap-4">
-          <div className="border border-black/10 bg-white/85 p-4">
+        <section className="grid min-h-0 gap-0 xl:grid-rows-[minmax(0,1fr)_200px]">
+          <div className="flex min-h-0 flex-col overflow-hidden border border-black/10 bg-white/85 p-2">
             <SectionHeader
               eyebrow="Preview"
-              title="Generated cut layout"
-              meta="All boards are exported in millimeters."
+              title="Layout"
+              meta="mm"
             />
-            <div className="mt-4 overflow-hidden border border-black/10 bg-[oklch(0.985_0.005_85)]">
-              <svg viewBox={canvasViewBox} className="h-105 w-full">
+            <div className="mt-1.5 min-h-0 overflow-hidden border border-black/10 bg-[oklch(0.985_0.005_85)]">
+              <svg viewBox={canvasViewBox} className="h-full min-h-[320px] w-full">
                 {document.boards.map((board, index) => {
                   const points = transformBoardPoints(board)
                   return (
@@ -139,13 +139,12 @@ export function GeneratorPage({
             </div>
           </div>
 
-          <div className="border border-black/10 bg-white/85 p-4">
+          <div className="flex min-h-0 flex-col overflow-hidden border-x border-b border-black/10 bg-white/85 p-2">
             <SectionHeader
               eyebrow="Markup"
-              title="SVG payload"
-              meta="This is the exact exported document."
+              title="SVG"
             />
-            <pre className="mt-4 max-h-80 overflow-auto border border-black/10 bg-[oklch(0.97_0.015_85)] p-4 text-xs leading-6 text-black/60 whitespace-pre-wrap break-all">
+            <pre className="mt-1.5 min-h-0 flex-1 overflow-auto border border-black/10 bg-[oklch(0.97_0.015_85)] p-2 text-[10px] leading-4.5 text-black/60 whitespace-pre-wrap break-all">
               {svgMarkup}
             </pre>
           </div>

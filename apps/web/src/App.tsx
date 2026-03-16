@@ -9,7 +9,6 @@ import { createDefaultPatternDocument, parsePatternJson, stringifyPatternDocumen
 import { useEffect, useState, useTransition } from 'react'
 import { EditorPage } from '@/components/pattern-studio/editor-page'
 import { GeneratorPage } from '@/components/pattern-studio/generator-page'
-import { HomePage } from '@/components/pattern-studio/home-page'
 import {
   createEditorSelection,
   getRouteFromPath,
@@ -115,5 +114,13 @@ export function App() {
     )
   }
 
-  return <HomePage />
+  return (
+    <EditorPage
+      document={editorDocument}
+      selection={selection}
+      onSelectionChange={setSelection}
+      onDocumentChange={handleEditorDocumentChange}
+      onExportJson={handleExportJson}
+    />
+  )
 }

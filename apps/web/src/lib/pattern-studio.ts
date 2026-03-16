@@ -11,7 +11,7 @@ import {
 
 import { getRandomId } from '@/lib/utils'
 
-export type RouteKey = 'home' | 'editor' | 'generator'
+export type RouteKey = 'editor' | 'generator'
 export type ShapePreset = 'rectangle' | 'rounded-rectangle' | 'circle'
 
 export interface EditorSelectionState {
@@ -56,15 +56,11 @@ export const BOARD_SWATCHES = [
 ]
 
 export function getRouteFromPath(pathname: string): RouteKey {
-  if (pathname === '/editor') {
-    return 'editor'
-  }
-
   if (pathname === '/generator') {
     return 'generator'
   }
 
-  return 'home'
+  return 'editor'
 }
 
 export function createEditorSelection(activeBoardId: string): EditorSelectionState {

@@ -11,9 +11,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { Button } from '@workspace/ui/components/button'
 import { getDocumentBounds, sampleShapePoints } from '@xtool-demo/core'
-import { Focus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
@@ -29,15 +27,11 @@ interface BoardPreview3DProps {
   selection: EditorSelectionState
   onSelectionChange: (selection: EditorSelectionState) => void
   onDocumentChange: (document: PatternDocument) => void
+  viewPreset?: CameraPreset
   canvasClassName?: string
 }
 
 type CameraPreset = 'front' | 'isometric' | 'side' | 'top'
-
-interface CameraPresetOption {
-  id: CameraPreset
-  label: string
-}
 
 interface CameraPose {
   position: [number, number, number]
@@ -62,13 +56,6 @@ interface DragState {
   selectedBoardIds: string[]
   startPoint: THREE.Vector3
 }
-
-const CAMERA_PRESET_OPTIONS: CameraPresetOption[] = [
-  { id: 'isometric', label: 'Iso' },
-  { id: 'front', label: 'Front' },
-  { id: 'side', label: 'Side' },
-  { id: 'top', label: 'Top' },
-]
 
 function toBoardShape(points: ControlPoint[]) {
   const shape = new THREE.Shape()
@@ -385,6 +372,7 @@ export function BoardPreview3D({
   selection,
   onSelectionChange,
   onDocumentChange,
+  viewPreset = 'isometric',
   canvasClassName,
 }: BoardPreview3DProps) {
   const controlsRef = useRef<CameraControlsImpl | null>(null)
@@ -414,27 +402,19 @@ export function BoardPreview3D({
     }
 
     initializedRef.current = true
-    applyPreset('isometric')
-  }, [applyPreset])
+    applyPreset(viewPreset)
+  }, [applyPreset, viewPreset])
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      return
+    }
+
+    applyPreset(viewPreset)
+  }, [applyPreset, viewPreset])
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden border border-black/10 bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))]">
-      <div className="pointer-events-none absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
-        <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 bg-white/88 p-1 shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm">
-          {CAMERA_PRESET_OPTIONS.map(preset => (
-            <Button
-              key={preset.id}
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => applyPreset(preset.id)}
-            >
-              <Focus className="size-3.5" />
-              {preset.label}
-            </Button>
-          ))}
-        </div>
-      </div>
       <div className={canvasClassName ?? 'h-[380px]'}>
         <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
           <Scene
