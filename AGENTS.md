@@ -6,6 +6,7 @@
 - Always use `const` for variables that are not reassigned. Use `let` only when you need to reassign a variable.
 - Always use `interface` for defining object shapes.
 - Use `tailwind` v4 for styling
+- Do not run `vite dev` or other commands, I will run them on my own.
 
 ## Designing the Page
 
