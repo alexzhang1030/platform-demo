@@ -18,6 +18,7 @@ import {
   selectSingleBoard,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
+import { clamp } from '@/lib/utils'
 import { PatternStudioLights } from './pattern-studio-lights'
 import { SelectionOutline } from './selection-outline'
 import { WebGPUGrid } from './webgpu-grid'
@@ -52,12 +53,83 @@ interface DragState {
   startPoint: THREE.Vector3
 }
 
+interface BoardWorkspaceBounds {
+  center: THREE.Vector3
+  maxDimension: number
+}
+
 interface WebGPUCanvasRendererParameters {
   alpha?: boolean
   antialias?: boolean
   canvas?: HTMLCanvasElement | OffscreenCanvas
   depth?: boolean
   stencil?: boolean
+}
+
+function getBoardWorkspaceBounds(document: PatternDocument): BoardWorkspaceBounds {
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let maxZ = 0
+
+  for (const board of document.boards) {
+    const points = sampleShapePoints(board.outline)
+
+    for (const point of points) {
+      const rotated = new THREE.Vector2(point.x, point.y).rotateAround(
+        new THREE.Vector2(0, 0),
+        (board.transform.rotation * Math.PI) / 180,
+      )
+      const worldX = rotated.x + board.transform.x
+      const worldY = rotated.y + board.transform.y
+
+      minX = Math.min(minX, worldX)
+      maxX = Math.max(maxX, worldX)
+      minY = Math.min(minY, worldY)
+      maxY = Math.max(maxY, worldY)
+    }
+
+    maxZ = Math.max(maxZ, board.thickness)
+  }
+
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxY)
+  ) {
+    return {
+      center: new THREE.Vector3(0, 0, 0),
+      maxDimension: 400,
+    }
+  }
+
+  const width = Math.max(1, maxX - minX)
+  const height = Math.max(1, maxY - minY)
+  const depth = Math.max(1, maxZ)
+  const paddedMaxDimension = Math.max(width, height, depth) * 1.3
+
+  return {
+    center: new THREE.Vector3((minX + maxX) / 2, -((minY + maxY) / 2), depth / 2),
+    maxDimension: paddedMaxDimension,
+  }
+}
+
+function getCameraFraming(bounds: BoardWorkspaceBounds) {
+  const distance = Math.max(bounds.maxDimension * 1.9, 260)
+  const position = bounds.center.clone().add(
+    new THREE.Vector3(distance, -distance, distance * 0.85),
+  )
+  const near = clamp(distance * 0.04, 0.1, 80)
+  const far = Math.max(distance * 6, bounds.maxDimension * 10)
+
+  return {
+    far,
+    near,
+    position,
+    target: bounds.center,
+  }
 }
 
 function toBoardShape(points: ControlPoint[]) {
@@ -153,6 +225,8 @@ function Scene({
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
+  const workspaceBounds = useMemo(() => getBoardWorkspaceBounds(document), [document])
+  const cameraFraming = useMemo(() => getCameraFraming(workspaceBounds), [workspaceBounds])
 
   function getPlaneIntersectionFromRay(ray: THREE.Ray) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
@@ -206,6 +280,19 @@ function Scene({
     },
     [syncSelectedObjects],
   )
+
+  useEffect(() => {
+    camera.position.copy(cameraFraming.position)
+    camera.near = cameraFraming.near
+    camera.far = cameraFraming.far
+    camera.updateProjectionMatrix()
+
+    const controls = controlsRef.current
+    if (controls) {
+      controls.target.copy(cameraFraming.target)
+      controls.update()
+    }
+  }, [camera, cameraFraming, controlsRef])
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
@@ -310,7 +397,14 @@ function Scene({
           onPointerUp={handleBoardPointerUp}
         />
       ))}
-      <PerspectiveCamera fov={60} makeDefault position={[520, -520, 360]} up={[0, 0, 1]} />
+      <PerspectiveCamera
+        fov={50}
+        makeDefault
+        near={cameraFraming.near}
+        far={cameraFraming.far}
+        position={cameraFraming.position.toArray()}
+        up={[0, 0, 1]}
+      />
       <OrbitControls
         ref={controlsRef}
         enableDamping
@@ -318,6 +412,7 @@ function Scene({
         maxDistance={4200}
         minDistance={80}
         screenSpacePanning
+        target={cameraFraming.target.toArray()}
       />
     </>
   )
