@@ -18,6 +18,7 @@ import {
   selectSingleBoard,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
+import { SelectionOutline } from './selection-outline'
 import { WebGPUGrid } from './webgpu-grid'
 
 interface BoardPreview3DProps {
@@ -32,6 +33,7 @@ interface BoardMeshProps {
   board: Board
   color: string
   isSelected: boolean
+  onMeshChange: (boardId: string, object: THREE.Object3D | null) => void
   resolvedTheme: 'dark' | 'light'
   onPointerDown: (event: ThreeEvent<PointerEvent>, board: Board) => void
   onPointerMove: (event: ThreeEvent<PointerEvent>) => void
@@ -80,6 +82,7 @@ function BoardMesh({
   board,
   color,
   isSelected,
+  onMeshChange,
   resolvedTheme,
   onPointerDown,
   onPointerMove,
@@ -110,6 +113,9 @@ function BoardMesh({
 
   return (
     <mesh
+      ref={(object) => {
+        onMeshChange(board.id, object)
+      }}
       geometry={geometry}
       position={[board.transform.x, -board.transform.y, 0]}
       rotation={[0, 0, (-board.transform.rotation * Math.PI) / 180]}
@@ -137,9 +143,11 @@ function Scene({
   resolvedTheme,
 }: SceneProps) {
   const { camera, gl } = useThree()
+  const boardObjectsRef = useRef(new Map<string, THREE.Object3D>())
   const dragStateRef = useRef<DragState | null>(null)
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
+  const selectedObjectsRef = useRef<THREE.Object3D[]>([])
 
   function getPlaneIntersectionFromRay(ray: THREE.Ray) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
@@ -165,6 +173,34 @@ function Scene({
       controls.enabled = true
     }
   }, [controlsRef])
+
+  const syncSelectedObjects = useCallback(() => {
+    selectedObjectsRef.current.length = 0
+
+    for (const boardId of selection.selectedBoardIds) {
+      const object = boardObjectsRef.current.get(boardId)
+      if (object) {
+        selectedObjectsRef.current.push(object)
+      }
+    }
+  }, [selection.selectedBoardIds])
+
+  useEffect(() => {
+    syncSelectedObjects()
+  }, [syncSelectedObjects])
+
+  const handleMeshChange = useCallback(
+    (boardId: string, object: THREE.Object3D | null) => {
+      if (object) {
+        boardObjectsRef.current.set(boardId, object)
+      } else {
+        boardObjectsRef.current.delete(boardId)
+      }
+
+      syncSelectedObjects()
+    },
+    [syncSelectedObjects],
+  )
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
@@ -254,6 +290,7 @@ function Scene({
     <>
       <color attach="background" args={[resolvedTheme === 'dark' ? '#191816' : '#f3efe6']} />
       <WebGPUGrid cursorPositionRef={gridCursorPositionRef} resolvedTheme={resolvedTheme} />
+      <SelectionOutline selectedObjectsRef={selectedObjectsRef} />
       <ambientLight intensity={resolvedTheme === 'dark' ? 1.22 : 1.05} />
       <directionalLight intensity={resolvedTheme === 'dark' ? 1.48 : 1.28} position={[480, -320, 520]} />
       <directionalLight intensity={resolvedTheme === 'dark' ? 0.62 : 0.4} position={[-260, 220, 220]} />
@@ -263,6 +300,7 @@ function Scene({
           board={board}
           color={mapBoardColor(index)}
           isSelected={selection.selectedBoardIds.includes(board.id)}
+          onMeshChange={handleMeshChange}
           resolvedTheme={resolvedTheme}
           onPointerDown={handleBoardPointerDown}
           onPointerMove={handleBoardPointerMove}
