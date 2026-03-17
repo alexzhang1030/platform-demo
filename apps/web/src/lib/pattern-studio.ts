@@ -24,6 +24,18 @@ export interface BoardMoveDelta {
   y: number
 }
 
+export interface BoardRectangle {
+  maxX: number
+  maxY: number
+  minX: number
+  minY: number
+}
+
+export interface BoardSpan {
+  end: ControlPoint
+  start: ControlPoint
+}
+
 export interface PresetOption {
   id: ShapePreset
   label: string
@@ -53,6 +65,13 @@ export const BOARD_SWATCHES = [
   'oklch(0.72 0.09 108)',
   'oklch(0.67 0.12 229)',
   'oklch(0.74 0.11 18)',
+]
+
+export const BOARD_THREE_SWATCHES = [
+  '#b97745',
+  '#97a85f',
+  '#4d7fc5',
+  '#cb7b5d',
 ]
 
 export function getRouteFromPath(pathname: string): RouteKey {
@@ -226,8 +245,67 @@ export function createBoardFromPreset(preset: ShapePreset, index: number): Board
   }
 }
 
+export function createBoardFromRectangle(rectangle: BoardRectangle): Board {
+  const width = Math.max(1, rectangle.maxX - rectangle.minX)
+  const height = Math.max(1, rectangle.maxY - rectangle.minY)
+
+  return {
+    id: getRandomId('board'),
+    name: 'Custom board',
+    thickness: 18,
+    material: 'birch-ply',
+    transform: {
+      x: rectangle.minX,
+      y: rectangle.minY,
+      rotation: 0,
+    },
+    outline: createRectangleShape(width, height),
+    holes: [],
+  }
+}
+
+export function createBoardFromSpan(span: BoardSpan, depth = 120): Board {
+  const deltaX = span.end.x - span.start.x
+  const deltaY = span.end.y - span.start.y
+  const length = Math.hypot(deltaX, deltaY)
+
+  if (length < 1) {
+    return createBoardFromRectangle({
+      minX: span.start.x,
+      minY: span.start.y,
+      maxX: span.start.x + 1,
+      maxY: span.start.y + 1,
+    })
+  }
+
+  const directionX = deltaX / length
+  const directionY = deltaY / length
+  const perpendicularX = -directionY
+  const perpendicularY = directionX
+  const cornerX = span.start.x - perpendicularX * (depth / 2)
+  const cornerY = span.start.y - perpendicularY * (depth / 2)
+
+  return {
+    id: getRandomId('board'),
+    name: 'Custom board',
+    thickness: 18,
+    material: 'birch-ply',
+    transform: {
+      x: cornerX,
+      y: cornerY,
+      rotation: (Math.atan2(deltaY, deltaX) * 180) / Math.PI,
+    },
+    outline: createRectangleShape(length, depth),
+    holes: [],
+  }
+}
+
 export function mapBoardColor(index: number) {
   return BOARD_SWATCHES[index % BOARD_SWATCHES.length] ?? BOARD_SWATCHES[0]
+}
+
+export function mapBoardThreeColor(index: number) {
+  return BOARD_THREE_SWATCHES[index % BOARD_THREE_SWATCHES.length] ?? BOARD_THREE_SWATCHES[0]
 }
 
 export function replacePointAt(

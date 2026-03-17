@@ -62,6 +62,7 @@ interface EditorPageProps {
 interface BoardCanvasProps {
   board: Board
   color: string
+  isInteractionLocked?: boolean
   isSelected: boolean
   isActive: boolean
   isDarkTheme: boolean
@@ -102,6 +103,7 @@ interface InsetOffset {
 }
 
 type PipLevel = 'compact' | 'expanded' | 'fullscreen'
+type EditorTool = 'create-board' | 'select'
 
 interface PipLayoutState {
   level: PipLevel
@@ -194,6 +196,7 @@ function clampPipOffset(
 function BoardCanvas({
   board,
   color,
+  isInteractionLocked = false,
   isSelected,
   isActive,
   isDarkTheme,
@@ -232,10 +235,11 @@ function BoardCanvas({
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
-        className="cursor-pointer transition-opacity"
-        onPointerDown={event => onBoardPointerDown(event, board)}
+        className={isInteractionLocked ? 'transition-opacity' : 'cursor-pointer transition-opacity'}
+        pointerEvents={isInteractionLocked ? 'none' : 'auto'}
+        onPointerDown={isInteractionLocked ? undefined : event => onBoardPointerDown(event, board)}
       />
-      {isActive
+      {isActive && !isInteractionLocked
         ? localPoints.map((point, pointIndex) => {
             const rotated = rotatePoint(point, board.transform.rotation)
             const worldPoint = {
@@ -383,6 +387,7 @@ export function EditorPage({
     x: 0,
     y: 0,
   })
+  const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('split')
   const [isInsetDragging, setIsInsetDragging] = useState(false)
   const [pipLayout, setPipLayout] = useState<PipLayoutState>({
@@ -393,6 +398,7 @@ export function EditorPage({
 
   const pipLevel = pipLayout.level
   const isPipFullscreen = workspaceMode === 'split' && pipLevel === 'fullscreen'
+  const isCreateBoardToolActive = activeTool === 'create-board'
 
   function updateBoard(nextBoard: Board) {
     const nextDocument = updateDocumentTimestamp({
@@ -586,6 +592,12 @@ export function EditorPage({
     event: ReactPointerEvent<SVGPolygonElement>,
     board: Board,
   ) {
+    if (isCreateBoardToolActive) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
 
@@ -695,7 +707,7 @@ export function EditorPage({
       <div className="overscroll-contain">
         <svg
           viewBox={canvasViewBox}
-          className={`${heightClass} w-full cursor-grab bg-[oklch(0.985_0.005_85)] active:cursor-grabbing dark:bg-[oklch(0.19_0.008_84)]`}
+          className={`${heightClass} w-full cursor-grab active:cursor-grabbing bg-[oklch(0.985_0.005_85)] dark:bg-[oklch(0.19_0.008_84)]`}
           onPointerDown={startCanvasBackgroundInteraction}
           onWheelCapture={handleWheelZoom}
         >
@@ -746,6 +758,7 @@ export function EditorPage({
             {workspaceMode === '3d'
               ? (
                   <BoardPreview3D
+                    createBoardModeEnabled={isCreateBoardToolActive}
                     document={document}
                     selection={selection}
                     onSelectionChange={onSelectionChange}
@@ -764,6 +777,7 @@ export function EditorPage({
                     {!isPipFullscreen
                       ? (
                           <BoardPreview3D
+                            createBoardModeEnabled={isCreateBoardToolActive}
                             document={document}
                             selection={selection}
                             onSelectionChange={onSelectionChange}
@@ -841,6 +855,31 @@ export function EditorPage({
                 <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
                   Add board
                 </p>
+                <div className="mt-1.5">
+                  <Button
+                    variant={isCreateBoardToolActive ? 'default' : 'outline'}
+                    size="sm"
+                  className="h-8 w-full px-2 text-[11px]"
+                  onClick={() => {
+                      setActiveTool(current => {
+                        if (current === 'create-board') {
+                          return 'select'
+                        }
+
+                        return 'create-board'
+                      })
+                    }}
+                  >
+                    {isCreateBoardToolActive ? 'Exit draw mode' : 'Draw board'}
+                  </Button>
+                  {isCreateBoardToolActive
+                    ? (
+                        <p className="mt-1 text-[10px] text-foreground/55">
+                          Create in 3D. Click to start, click again to commit. Hold Shift for free angle. Press Esc to cancel.
+                        </p>
+                      )
+                    : null}
+                </div>
                 <div className="mt-1.5 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
                   {PRESET_OPTIONS.map(preset => (
                     <button
