@@ -43,7 +43,13 @@ import {
 import { clamp, formatMillimeters } from '@/lib/utils'
 
 import { BoardPreview3D } from './board-preview-3d'
-import { AppShell, SectionHeader } from './chrome'
+import {
+  AppShell,
+  FloatingTray,
+  OverlayPanel,
+  SectionHeader,
+  WorkspaceViewport,
+} from './chrome'
 
 interface EditorPageProps {
   document: PatternDocument
@@ -468,14 +474,14 @@ export function EditorPage({
 
       setInsetOffset(current => ({
         x: clamp(
-          current.x + deltaX,
-          -(panelRect.width - insetSize.width - INSET_MARGIN),
+          current.x - deltaX,
           0,
+          panelRect.width - insetSize.width - INSET_MARGIN * 2,
         ),
         y: clamp(
-          current.y + deltaY,
+          current.y - deltaY,
           0,
-          panelRect.height - insetSize.height - INSET_MARGIN,
+          panelRect.height - insetSize.height - INSET_MARGIN * 2,
         ),
       }))
     }
@@ -561,7 +567,7 @@ export function EditorPage({
     options?: { compact?: boolean, showInsetControls?: boolean },
   ) => (
     <div className="relative h-full overflow-hidden bg-[linear-gradient(135deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px)] dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px)]">
-      <div className="pointer-events-none absolute top-2 right-2 z-10 flex items-center gap-1.5">
+      <div className="pointer-events-none absolute top-2 right-2 z-30 flex items-center gap-1.5">
         <div className="pointer-events-auto flex items-center gap-1 bg-background/92 p-0.5 shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
           <Button
             variant="outline"
@@ -644,86 +650,9 @@ export function EditorPage({
 
   return (
     <AppShell route="editor">
-      <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[192px_minmax(0,1fr)_236px]">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-l border-border bg-background/80 p-2">
-          <SectionHeader
-            eyebrow="Boards"
-            title="Pattern"
-            meta={`${document.boards.length} boards`}
-          />
-          <div className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-auto pr-0.5">
-            {document.boards.map((board, index) => {
-              const active = board.id === activeBoardId
-              const selected = selectedBoardIds.includes(board.id)
-              return (
-                <button
-                  type="button"
-                  key={board.id}
-                  className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
-                    ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
-                    : selected
-                      ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
-                      : 'border-border bg-card hover:bg-muted/45'
-                  }`}
-                  onClick={(event) => {
-                    if (event.metaKey || event.ctrlKey) {
-                      onSelectionChange(toggleBoardSelection(selection, board.id))
-                      return
-                    }
-
-                    onSelectionChange(selectSingleBoard(board.id))
-                  }}
-                >
-                  <span
-                    className="mt-1 block size-2 shrink-0"
-                    style={{ backgroundColor: mapBoardColor(index) }}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
-                      {board.name}
-                    </span>
-                    <span className="mt-0.5 block text-[10px] text-foreground/55">
-                      {formatMillimeters(board.thickness)}
-                    </span>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="mt-1.5 border-t border-border pt-1.5">
-            <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
-              Add board
-            </p>
-            <div className="mt-1.5 space-y-1">
-              {PRESET_OPTIONS.map(preset => (
-                <button
-                  type="button"
-                  key={preset.id}
-                  className="w-full border border-border bg-card px-2 py-1.5 text-left hover:bg-muted/45"
-                  onClick={() => addBoard(preset.id)}
-                >
-                  <span className="block text-[11px] font-semibold tracking-[-0.03em]">
-                    {preset.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-1.5 flex gap-1">
-            <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedBoard}>
-              Remove
-            </Button>
-            <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onExportJson}>
-              Export
-              <Download className="size-3" />
-            </Button>
-          </div>
-        </aside>
-
-        <section className="relative flex min-h-0 flex-col overflow-hidden border border-border bg-background/85">
-          <div className="min-h-0 flex-1 overflow-hidden">
+      <WorkspaceViewport>
+        <section className="relative h-full min-h-0 overflow-hidden">
+          <div className="h-full min-h-0 overflow-hidden">
             {workspaceMode === '2d'
               ? render2DCanvas('h-full')
               : null}
@@ -754,12 +683,13 @@ export function EditorPage({
                       canvasClassName="h-full min-h-[520px]"
                     />
                     <div
-                      className={`absolute top-2 right-2 z-10 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-all'} ${isInsetExpanded
+                      className={`absolute z-30 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-all'} ${isInsetExpanded
                         ? 'w-[min(52vw,720px)]'
                         : 'w-[min(24vw,320px)]'
                       }`}
                       style={{
-                        transform: `translate(${insetOffset.x}px, ${insetOffset.y}px)`,
+                        bottom: INSET_MARGIN + insetOffset.y,
+                        right: INSET_MARGIN + insetOffset.x,
                       }}
                     >
                       {render2DCanvas(isInsetExpanded ? 'h-[360px]' : 'h-[200px]', {
@@ -771,115 +701,204 @@ export function EditorPage({
                 )
               : null}
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center pb-3">
-            <div className="pointer-events-auto flex items-center bg-background/94 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)]">
-              <WorkspaceModeSwitch value={workspaceMode} onChange={setWorkspaceMode} />
-            </div>
+          <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,320px)] lg:w-[320px]">
+              <SectionHeader
+                eyebrow="Boards"
+                title="Pattern"
+                meta={`${document.boards.length} boards`}
+              />
+              <div className="mt-1.5 max-h-[min(34vh,360px)] space-y-1 overflow-auto pr-0.5 lg:max-h-[min(52vh,560px)]">
+                {document.boards.map((board, index) => {
+                  const active = board.id === activeBoardId
+                  const selected = selectedBoardIds.includes(board.id)
+                  return (
+                    <button
+                      type="button"
+                      key={board.id}
+                      className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
+                        ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                        : selected
+                          ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
+                          : 'border-border bg-card hover:bg-muted/45'
+                      }`}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey) {
+                          onSelectionChange(toggleBoardSelection(selection, board.id))
+                          return
+                        }
+
+                        onSelectionChange(selectSingleBoard(board.id))
+                      }}
+                    >
+                      <span
+                        className="mt-1 block size-2 shrink-0"
+                        style={{ backgroundColor: mapBoardColor(index) }}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
+                          {board.name}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-foreground/55">
+                          {formatMillimeters(board.thickness)}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-1.5 border-t border-border pt-1.5">
+                <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                  Add board
+                </p>
+                <div className="mt-1.5 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+                  {PRESET_OPTIONS.map(preset => (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      className="w-full border border-border bg-card px-2 py-1.5 text-left hover:bg-muted/45"
+                      onClick={() => addBoard(preset.id)}
+                    >
+                      <span className="block text-[11px] font-semibold tracking-[-0.03em]">
+                        {preset.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-1.5 flex gap-1">
+                <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedBoard}>
+                  Remove
+                </Button>
+                <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onExportJson}>
+                  Export
+                  <Download className="size-3" />
+                </Button>
+              </div>
+            </OverlayPanel>
+
+            <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,280px)] lg:w-[280px]">
+              <SectionHeader
+                eyebrow="Inspector"
+                title={selectedBoard?.name ?? 'Board'}
+              />
+
+              {selectedBoard
+                ? (
+                    <div className="mt-2 max-h-[min(34vh,360px)] space-y-3 overflow-auto pr-0.5 lg:max-h-[min(58vh,620px)]">
+                      <Field label="Board name">
+                        <input
+                          value={selectedBoard.name}
+                          onChange={event =>
+                            updateBoard({
+                              ...selectedBoard,
+                              name: event.target.value,
+                            })}
+                          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
+                        />
+                      </Field>
+
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                        <Field label="Thickness">
+                          <NumberInput
+                            value={selectedBoard.thickness}
+                            onChange={value =>
+                              updateBoard({
+                                ...selectedBoard,
+                                thickness: clamp(value, 1, 120),
+                              })}
+                          />
+                        </Field>
+                        <Field label="Rotation">
+                          <NumberInput
+                            value={selectedBoard.transform.rotation}
+                            onChange={value =>
+                              updateBoard({
+                                ...selectedBoard,
+                                transform: {
+                                  ...selectedBoard.transform,
+                                  rotation: value,
+                                },
+                              })}
+                          />
+                        </Field>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                        <Field label="X offset">
+                          <NumberInput
+                            value={selectedBoard.transform.x}
+                            onChange={value =>
+                              updateBoard({
+                                ...selectedBoard,
+                                transform: {
+                                  ...selectedBoard.transform,
+                                  x: value,
+                                },
+                              })}
+                          />
+                        </Field>
+                        <Field label="Y offset">
+                          <NumberInput
+                            value={selectedBoard.transform.y}
+                            onChange={value =>
+                              updateBoard({
+                                ...selectedBoard,
+                                transform: {
+                                  ...selectedBoard.transform,
+                                  y: value,
+                                },
+                              })}
+                          />
+                        </Field>
+                      </div>
+
+                      <Field label="Material">
+                        <input
+                          value={selectedBoard.material ?? ''}
+                          onChange={event =>
+                            updateBoard({
+                              ...selectedBoard,
+                              material: event.target.value,
+                            })}
+                          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
+                        />
+                      </Field>
+                      <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
+                        <Shapes className="size-3" />
+                        <span>
+                          {getOutlinePoints(selectedBoard).length}
+                          {' '}
+                          pts
+                        </span>
+                        <span>·</span>
+                        <span>{formatMillimeters(selectedBoard.thickness)}</span>
+                      </div>
+                    </div>
+                  )
+                : (
+                    <div className="mt-2 border border-dashed border-border px-3 py-6 text-center text-[11px] text-foreground/55">
+                      Select a board to inspect and edit its properties.
+                    </div>
+                  )}
+            </OverlayPanel>
+          </div>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3">
+            <FloatingTray className="pointer-events-auto">
+              <div className="flex items-center gap-2">
+                <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground/45">
+                  Workspace
+                </div>
+                <div className="h-5 w-px bg-border" />
+                <WorkspaceModeSwitch value={workspaceMode} onChange={setWorkspaceMode} />
+              </div>
+            </FloatingTray>
           </div>
         </section>
-
-        <aside className="flex min-h-0 flex-col overflow-hidden border-y border-r border-border bg-background/80 p-2">
-          <SectionHeader
-            eyebrow="Inspector"
-            title={selectedBoard?.name ?? 'Board'}
-          />
-
-          {selectedBoard
-            ? (
-                <div className="mt-2 min-h-0 space-y-3 overflow-auto pr-0.5">
-                  <Field label="Board name">
-                    <input
-                      value={selectedBoard.name}
-                      onChange={event =>
-                        updateBoard({
-                          ...selectedBoard,
-                          name: event.target.value,
-                        })}
-                      className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
-                    />
-                  </Field>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Thickness">
-                      <NumberInput
-                        value={selectedBoard.thickness}
-                        onChange={value =>
-                          updateBoard({
-                            ...selectedBoard,
-                            thickness: clamp(value, 1, 120),
-                          })}
-                      />
-                    </Field>
-                    <Field label="Rotation">
-                      <NumberInput
-                        value={selectedBoard.transform.rotation}
-                        onChange={value =>
-                          updateBoard({
-                            ...selectedBoard,
-                            transform: {
-                              ...selectedBoard.transform,
-                              rotation: value,
-                            },
-                          })}
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="X offset">
-                      <NumberInput
-                        value={selectedBoard.transform.x}
-                        onChange={value =>
-                          updateBoard({
-                            ...selectedBoard,
-                            transform: {
-                              ...selectedBoard.transform,
-                              x: value,
-                            },
-                          })}
-                      />
-                    </Field>
-                    <Field label="Y offset">
-                      <NumberInput
-                        value={selectedBoard.transform.y}
-                        onChange={value =>
-                          updateBoard({
-                            ...selectedBoard,
-                            transform: {
-                              ...selectedBoard.transform,
-                              y: value,
-                            },
-                          })}
-                      />
-                    </Field>
-                  </div>
-
-                  <Field label="Material">
-                    <input
-                      value={selectedBoard.material ?? ''}
-                      onChange={event =>
-                        updateBoard({
-                          ...selectedBoard,
-                          material: event.target.value,
-                        })}
-                      className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
-                    />
-                  </Field>
-                  <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
-                    <Shapes className="size-3" />
-                    <span>
-                      {getOutlinePoints(selectedBoard).length}
-                      {' '}
-                      pts
-                    </span>
-                    <span>·</span>
-                    <span>{formatMillimeters(selectedBoard.thickness)}</span>
-                  </div>
-                </div>
-              )
-            : null}
-        </aside>
-      </div>
+      </WorkspaceViewport>
     </AppShell>
   )
 }

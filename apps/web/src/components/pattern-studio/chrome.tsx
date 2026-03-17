@@ -17,6 +17,20 @@ interface AppShellProps {
   children: ReactNode
 }
 
+interface WorkspaceViewportProps {
+  children: ReactNode
+}
+
+interface OverlayPanelProps {
+  children: ReactNode
+  className?: string
+}
+
+interface FloatingTrayProps {
+  children: ReactNode
+  className?: string
+}
+
 interface ThemeOption {
   label: string
   value: 'light' | 'dark' | 'system'
@@ -49,9 +63,9 @@ export function AppShell({ route, children }: AppShellProps) {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="h-svh overflow-hidden bg-[linear-gradient(180deg,oklch(0.98_0.01_85),oklch(0.95_0.02_84))] text-foreground dark:bg-[linear-gradient(180deg,oklch(0.18_0.01_85),oklch(0.14_0.01_82))]">
-      <div className="mx-auto flex h-full max-w-[1800px] min-h-0 flex-col px-0 py-0">
-        <header className="flex shrink-0 items-center justify-between gap-2 border-x border-t border-border bg-background/88 px-2 py-1 backdrop-blur-sm">
+    <div className="h-svh overflow-hidden bg-[radial-gradient(circle_at_top,oklch(0.97_0.02_85),oklch(0.9_0.03_80)_38%,oklch(0.82_0.025_78))] text-foreground dark:bg-[radial-gradient(circle_at_top,oklch(0.28_0.025_255),oklch(0.16_0.015_255)_42%,oklch(0.1_0.01_255))]">
+      <div className="relative mx-auto h-full max-w-[1920px] overflow-hidden px-3 py-3 sm:px-4 sm:py-4">
+        <header className="absolute inset-x-3 top-3 z-40 flex items-center justify-between gap-2 border border-border/60 bg-background/82 px-2 py-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.16)] backdrop-blur-md sm:inset-x-4 sm:top-4 sm:px-3 dark:shadow-[0_24px_72px_rgba(0,0,0,0.45)]">
           <div className="flex items-center gap-2.5">
             <button
               type="button"
@@ -110,8 +124,36 @@ export function AppShell({ route, children }: AppShellProps) {
             </nav>
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="h-full overflow-hidden pt-14 sm:pt-16">{children}</div>
       </div>
+    </div>
+  )
+}
+
+export function WorkspaceViewport({ children }: WorkspaceViewportProps) {
+  return (
+    <div className="relative h-full min-h-0 overflow-hidden border border-border/60 bg-background/24 shadow-[0_30px_90px_rgba(0,0,0,0.18)] backdrop-blur-[2px] dark:bg-background/10 dark:shadow-[0_30px_90px_rgba(0,0,0,0.4)]">
+      {children}
+    </div>
+  )
+}
+
+export function OverlayPanel({ children, className }: OverlayPanelProps) {
+  const panelClassName = className ? ` ${className}` : ''
+
+  return (
+    <div className={`border border-border/70 bg-background/86 p-2 shadow-[0_20px_56px_rgba(0,0,0,0.16)] backdrop-blur-md dark:shadow-[0_20px_56px_rgba(0,0,0,0.42)]${panelClassName}`}>
+      {children}
+    </div>
+  )
+}
+
+export function FloatingTray({ children, className }: FloatingTrayProps) {
+  const trayClassName = className ? ` ${className}` : ''
+
+  return (
+    <div className={`border border-border/70 bg-background/90 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.16)] backdrop-blur-md dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)]${trayClassName}`}>
+      {children}
     </div>
   )
 }
