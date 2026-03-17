@@ -20,7 +20,7 @@ import {
   Minus,
   Shapes,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useTheme } from '@/components/theme-provider'
 import {
@@ -70,6 +70,11 @@ type EditorTool = 'create-board' | 'select'
 interface PipLayoutState {
   level: PipLevel
   offset: InsetOffset
+}
+
+interface PanelSize {
+  height: number
+  width: number
 }
 
 const INSET_MARGIN = 8
@@ -178,6 +183,10 @@ export function EditorPage({
     level: 'compact',
     offset: { x: 0, y: 0 },
   })
+  const [splitPanelSize, setSplitPanelSize] = useState<PanelSize>({
+    height: 720,
+    width: 1280,
+  })
   const splitPanelRef = useRef<HTMLDivElement | null>(null)
 
   const pipLevel = pipLayout.level
@@ -213,6 +222,32 @@ export function EditorPage({
 
     return totalSheetHeight + totalGapHeight + NESTING_PANEL_PADDING * 2
   }, [nestingResult.sheets])
+
+  useEffect(() => {
+    const panel = splitPanelRef.current
+    if (!panel) {
+      return
+    }
+
+    const updatePanelSize = () => {
+      setSplitPanelSize({
+        height: panel.clientHeight,
+        width: panel.clientWidth,
+      })
+    }
+
+    updatePanelSize()
+
+    const observer = new ResizeObserver(() => {
+      updatePanelSize()
+    })
+
+    observer.observe(panel)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
 
   function updateBoard(nextBoard: Board) {
     const nextDocument = updateDocumentTimestamp({
@@ -552,7 +587,7 @@ export function EditorPage({
     </div>
   )
 
-  const splitPanelWidth = splitPanelRef.current?.clientWidth ?? 1280
+  const splitPanelWidth = splitPanelSize.width
   const floatingLevel = pipLevel === 'fullscreen' ? 'expanded' : pipLevel
   const floatingSize = getInsetSize(splitPanelWidth, floatingLevel)
 

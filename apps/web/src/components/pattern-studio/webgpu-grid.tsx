@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react'
 import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
 import { color, float, fract, fwidth, mix, positionLocal, uniform } from 'three/tsl'
 import * as THREE from 'three/webgpu'
 
@@ -28,11 +29,17 @@ export function WebGPUGrid({
   fadeStrength = 2,
   revealRadius = 280,
 }: WebGPUGridProps) {
+  const cursorUniform = useMemo(() => uniform(new THREE.Vector2()), [])
+
+  useFrame(() => {
+    cursorUniform.value.copy(cursorPositionRef.current)
+  })
+
   const material = useMemo(() => {
     const cellColor = resolvedTheme === 'dark' ? '#555566' : '#d6d3d1'
     const sectionColor = resolvedTheme === 'dark' ? '#666677' : '#78716c'
     const pos = positionLocal.xy
-    const cursorPos = uniform(cursorPositionRef.current)
+    const cursorPos = cursorUniform
 
     const getGrid = (size: number, thickness: number) => {
       const r = pos.div(size)
@@ -67,7 +74,7 @@ export function WebGPUGrid({
   }, [
     cellSize,
     cellThickness,
-    cursorPositionRef,
+    cursorUniform,
     fadeDistance,
     fadeStrength,
     resolvedTheme,

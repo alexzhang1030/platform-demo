@@ -76,6 +76,11 @@ interface CreateBoardDraft {
   start: THREE.Vector3
 }
 
+interface CreateCursorPosition {
+  x: number
+  y: number
+}
+
 interface CreateBoardSpanMetrics {
   angle: number
   corner: THREE.Vector3
@@ -315,9 +320,12 @@ function Scene({
   const createCursorSphereRef = useRef<THREE.Mesh | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
-  const createCursorPointRef = useRef(new THREE.Vector3(0, 0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
+  const [createCursorPosition, setCreateCursorPosition] = useState<CreateCursorPosition>({
+    x: 0,
+    y: 0,
+  })
   const workspaceBounds = useMemo(() => getBoardWorkspaceBounds(document), [document])
   const groundPlaneSize = Math.max(workspaceBounds.maxDimension * 6, 2400)
   const createPreviewBoard = useMemo(() => {
@@ -341,8 +349,6 @@ function Scene({
   }, [createBoardDraft])
 
   const syncCreateCursor = useCallback((point: THREE.Vector3) => {
-    createCursorPointRef.current.copy(point)
-
     if (createCursorSphereRef.current) {
       createCursorSphereRef.current.position.set(point.x, point.y, 4)
     }
@@ -350,6 +356,10 @@ function Scene({
     if (createCursorRingRef.current) {
       createCursorRingRef.current.position.set(point.x, point.y, 0.5)
     }
+    setCreateCursorPosition({
+      x: point.x,
+      y: point.y,
+    })
   }, [])
 
   function getPlaneIntersectionFromRay(ray: THREE.Ray) {
@@ -587,13 +597,13 @@ function Scene({
             </mesh>
             <mesh
               ref={createCursorSphereRef}
-              position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 4]}>
+              position={[createCursorPosition.x, createCursorPosition.y, 4]}>
               <sphereGeometry args={[5, 24, 24]} />
               <meshBasicMaterial color="#60a5fa" depthWrite={false} transparent opacity={0.95} />
             </mesh>
             <mesh
               ref={createCursorRingRef}
-              position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 0.5]}>
+              position={[createCursorPosition.x, createCursorPosition.y, 0.5]}>
               <ringGeometry args={[10, 18, 40]} />
               <meshBasicMaterial color="#60a5fa" depthWrite={false} side={THREE.DoubleSide} transparent opacity={0.45} />
             </mesh>
@@ -656,14 +666,15 @@ export function BoardPreview3D({
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null)
-  const initialCameraFramingRef = useRef(getCameraFraming(getBoardWorkspaceBounds(document)))
+  const [initialCameraFraming] = useState(() =>
+    getCameraFraming(getBoardWorkspaceBounds(document)),
+  )
   const [createBoardDraft, setCreateBoardDraft] = useState<CreateBoardDraft | null>(null)
   const [isCameraPanModifierPressed, setIsCameraPanModifierPressed] = useState(false)
   const [isCreateBoardAngleSnapDisabled, setIsCreateBoardAngleSnapDisabled] = useState(false)
   const wrapperClassName = resolvedTheme === 'dark'
     ? 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.2_0.012_255),oklch(0.12_0.012_255))]'
     : 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.91_0.02_85),oklch(0.82_0.025_80))]'
-  const initialCameraFraming = initialCameraFramingRef.current
 
   function resetCamera() {
     const controls = controlsRef.current
@@ -717,13 +728,6 @@ export function BoardPreview3D({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleWindowBlur)
-    }
-  }, [createBoardModeEnabled])
-
-  useEffect(() => {
-    if (!createBoardModeEnabled) {
-      setCreateBoardDraft(null)
-      setIsCreateBoardAngleSnapDisabled(false)
     }
   }, [createBoardModeEnabled])
 
