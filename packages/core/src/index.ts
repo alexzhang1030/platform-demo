@@ -5,6 +5,8 @@ import type {
   PatternDocument,
 } from '@xtool-demo/protocol'
 
+export * from './nesting'
+
 export interface Bounds {
   minX: number
   minY: number

@@ -24,9 +24,17 @@ We have some packages here:
 - `packages/core`: The core package that contains the main logic and algorithms.
 - `packages/protocol`: The general protocol package can be shared in editor, generator.
 
+Rules for shared logic placement:
+
+- Core logic, algorithms, and render-agnostic data processing should go into `packages/core`.
+- Any logic that can be shared across editor and generator should prefer `packages/core` over app-local code.
+- UI rendering, view wiring, and app-specific interaction state should stay in the app layer.
+
 We have two main apps, if you checkout the `apps/website`, you will find two main apps:
 
 - `editor`
 - `generator`
+
+Use `update-how-it-works` when core logic changes.
 
 Keep your eyes on our guidelines.

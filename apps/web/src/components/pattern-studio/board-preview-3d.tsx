@@ -1,7 +1,8 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Board, ControlPoint, PatternDocument } from '@xtool-demo/protocol'
-import type { ElementRef } from 'react'
+import type { ComponentRef } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
+import { Button } from '@workspace/ui/components/button'
 import {
   OrbitControls,
   PerspectiveCamera,
@@ -42,8 +43,9 @@ interface BoardMeshProps {
 }
 
 interface SceneProps extends BoardPreview3DProps {
-  controlsRef: React.RefObject<ElementRef<typeof OrbitControls> | null>
+  controlsRef: React.RefObject<ComponentRef<typeof OrbitControls> | null>
   createBoardDraft: CreateBoardDraft | null
+  initialCameraFraming: ReturnType<typeof getCameraFraming>
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
   onCreateBoardDraftChange: (draft: CreateBoardDraft | null) => void
@@ -302,6 +304,7 @@ function Scene({
   onCreateBoardDraftChange,
   onDocumentChange,
   controlsRef,
+  initialCameraFraming,
   isCameraPanModifierPressed,
   isCreateBoardAngleSnapDisabled,
   resolvedTheme,
@@ -316,7 +319,6 @@ function Scene({
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
   const workspaceBounds = useMemo(() => getBoardWorkspaceBounds(document), [document])
-  const cameraFraming = useMemo(() => getCameraFraming(workspaceBounds), [workspaceBounds])
   const groundPlaneSize = Math.max(workspaceBounds.maxDimension * 6, 2400)
   const createPreviewBoard = useMemo(() => {
     if (!createBoardDraft) {
@@ -412,19 +414,6 @@ function Scene({
     },
     [syncSelectedObjects],
   )
-
-  useEffect(() => {
-    camera.position.copy(cameraFraming.position)
-    camera.near = cameraFraming.near
-    camera.far = cameraFraming.far
-    camera.updateProjectionMatrix()
-
-    const controls = controlsRef.current
-    if (controls) {
-      controls.target.copy(cameraFraming.target)
-      controls.update()
-    }
-  }, [camera, cameraFraming, controlsRef])
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
@@ -587,29 +576,29 @@ function Scene({
       <PatternStudioLights resolvedTheme={resolvedTheme} />
       {createBoardModeEnabled
         ? (
-            <>
-              <mesh
-                position={[0, 0, 0]}
-                onPointerDown={handleCreateBoardPointerDown}
-                onPointerMove={handleCreateBoardPointerMove}
-              >
-                <planeGeometry args={[groundPlaneSize, groundPlaneSize]} />
-                <meshBasicMaterial opacity={0} transparent />
-              </mesh>
-              <mesh
-                ref={createCursorSphereRef}
-                position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 4]}>
-                <sphereGeometry args={[5, 24, 24]} />
-                <meshBasicMaterial color="#60a5fa" depthWrite={false} transparent opacity={0.95} />
-              </mesh>
-              <mesh
-                ref={createCursorRingRef}
-                position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 0.5]}>
-                <ringGeometry args={[10, 18, 40]} />
-                <meshBasicMaterial color="#60a5fa" depthWrite={false} side={THREE.DoubleSide} transparent opacity={0.45} />
-              </mesh>
-            </>
-          )
+          <>
+            <mesh
+              position={[0, 0, 0]}
+              onPointerDown={handleCreateBoardPointerDown}
+              onPointerMove={handleCreateBoardPointerMove}
+            >
+              <planeGeometry args={[groundPlaneSize, groundPlaneSize]} />
+              <meshBasicMaterial opacity={0} transparent />
+            </mesh>
+            <mesh
+              ref={createCursorSphereRef}
+              position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 4]}>
+              <sphereGeometry args={[5, 24, 24]} />
+              <meshBasicMaterial color="#60a5fa" depthWrite={false} transparent opacity={0.95} />
+            </mesh>
+            <mesh
+              ref={createCursorRingRef}
+              position={[createCursorPointRef.current.x, createCursorPointRef.current.y, 0.5]}>
+              <ringGeometry args={[10, 18, 40]} />
+              <meshBasicMaterial color="#60a5fa" depthWrite={false} side={THREE.DoubleSide} transparent opacity={0.45} />
+            </mesh>
+          </>
+        )
         : null}
       {document.boards.map((board) => (
         <BoardMesh
@@ -623,20 +612,20 @@ function Scene({
       ))}
       {createPreviewBoard
         ? (
-            <BoardMesh
-              key="draft-board-preview"
-              board={createPreviewBoard}
-              onMeshChange={() => {}}
-              preview
-            />
-          )
+          <BoardMesh
+            key="draft-board-preview"
+            board={createPreviewBoard}
+            onMeshChange={() => { }}
+            preview
+          />
+        )
         : null}
       <PerspectiveCamera
         fov={50}
         makeDefault
-        near={cameraFraming.near}
-        far={cameraFraming.far}
-        position={cameraFraming.position.toArray()}
+        near={initialCameraFraming.near}
+        far={initialCameraFraming.far}
+        position={initialCameraFraming.position.toArray()}
         up={[0, 0, 1]}
       />
       <OrbitControls
@@ -651,7 +640,7 @@ function Scene({
           RIGHT: THREE.MOUSE.ROTATE,
         }}
         screenSpacePanning
-        target={cameraFraming.target.toArray()}
+        target={initialCameraFraming.target.toArray()}
       />
     </>
   )
@@ -666,13 +655,25 @@ export function BoardPreview3D({
   canvasClassName,
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
-  const controlsRef = useRef<ElementRef<typeof OrbitControls> | null>(null)
+  const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null)
+  const initialCameraFramingRef = useRef(getCameraFraming(getBoardWorkspaceBounds(document)))
   const [createBoardDraft, setCreateBoardDraft] = useState<CreateBoardDraft | null>(null)
   const [isCameraPanModifierPressed, setIsCameraPanModifierPressed] = useState(false)
   const [isCreateBoardAngleSnapDisabled, setIsCreateBoardAngleSnapDisabled] = useState(false)
   const wrapperClassName = resolvedTheme === 'dark'
     ? 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.2_0.012_255),oklch(0.12_0.012_255))]'
     : 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.91_0.02_85),oklch(0.82_0.025_80))]'
+  const initialCameraFraming = initialCameraFramingRef.current
+
+  function resetCamera() {
+    const controls = controlsRef.current
+    if (!controls) {
+      return
+    }
+
+    controls.reset()
+    controls.update()
+  }
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -765,6 +766,7 @@ export function BoardPreview3D({
             onCreateBoardDraftChange={setCreateBoardDraft}
             onDocumentChange={onDocumentChange}
             controlsRef={controlsRef}
+            initialCameraFraming={initialCameraFraming}
             isCameraPanModifierPressed={isCameraPanModifierPressed}
             isCreateBoardAngleSnapDisabled={isCreateBoardAngleSnapDisabled}
             resolvedTheme={resolvedTheme}
@@ -774,25 +776,35 @@ export function BoardPreview3D({
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 border border-border/60 bg-background/72 px-2 py-1 text-[10px] font-medium tracking-[0.01em] text-foreground/72 backdrop-blur-md">
         {createBoardModeEnabled
           ? (
-              <>
-                <span>Click to start</span>
-                <span className="mx-1.5 text-foreground/35">/</span>
-                <span>Click to commit</span>
-                <span className="mx-1.5 text-foreground/35">/</span>
-                <span>Shift free angle</span>
-                <span className="mx-1.5 text-foreground/35">/</span>
-                <span>Esc cancel</span>
-              </>
-            )
+            <>
+              <span>Click to start</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Click to commit</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Shift free angle</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Esc cancel</span>
+            </>
+          )
           : (
-              <>
-                <span>Drag board</span>
-                <span className="mx-1.5 text-foreground/35">/</span>
-                <span>Space drag to pan</span>
-                <span className="mx-1.5 text-foreground/35">/</span>
-                <span>Scroll to zoom</span>
-              </>
-            )}
+            <>
+              <span>Drag board</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Space drag to pan</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Scroll to zoom</span>
+            </>
+          )}
+      </div>
+      <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center">
+        <Button
+          variant="outline"
+          size="sm"
+          className="pointer-events-auto h-8 border-border/70 bg-background/80 px-3 text-[11px] shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-md"
+          onClick={resetCamera}
+        >
+          Reset camera
+        </Button>
       </div>
     </div>
   )

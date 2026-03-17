@@ -6,25 +6,19 @@ import type {
 import type {
   ReactNode,
   PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent,
 } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
 import {
-  getDocumentBounds,
-  rotatePoint,
+  buildNestingLayout,
   sampleShapePoints,
 } from '@xtool-demo/core'
 import {
-  Box,
   Download,
   Grip,
-  Maximize2,
-  Minimize2,
-  Move,
-  PanelsTopLeft,
+  Plus,
+  Minus,
   Shapes,
-  Square,
 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
@@ -32,12 +26,9 @@ import { useTheme } from '@/components/theme-provider'
 import {
   createBoardFromPreset,
   mapBoardColor,
-  moveBoardsByDelta,
   PRESET_OPTIONS,
-  replacePointAt,
   selectSingleBoard,
   toggleBoardSelection,
-  updateBoardOutlinePoints,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
 import { clamp, formatMillimeters } from '@/lib/utils'
@@ -45,7 +36,6 @@ import { clamp, formatMillimeters } from '@/lib/utils'
 import { BoardPreview3D } from './board-preview-3d'
 import {
   AppShell,
-  FloatingTray,
   OverlayPanel,
   SectionHeader,
   WorkspaceViewport,
@@ -59,22 +49,6 @@ interface EditorPageProps {
   onExportJson: () => void
 }
 
-interface BoardCanvasProps {
-  board: Board
-  color: string
-  isInteractionLocked?: boolean
-  isSelected: boolean
-  isActive: boolean
-  isDarkTheme: boolean
-  canvasTransform: ViewTransform
-  onBoardPointerDown: (
-    event: ReactPointerEvent<SVGPolygonElement>,
-    board: Board,
-  ) => void
-  onPointMove: (pointIndex: number, nextPoint: ControlPoint) => void
-  onPointDragStart: () => void
-}
-
 interface FieldProps {
   label: string
   children: ReactNode
@@ -83,18 +57,6 @@ interface FieldProps {
 interface NumberInputProps {
   value: number
   onChange: (value: number) => void
-}
-
-interface IconToggleOption<TValue extends string> {
-  label: string
-  value: TValue
-  icon: typeof Box
-}
-
-interface ViewTransform {
-  scale: number
-  x: number
-  y: number
 }
 
 interface InsetOffset {
@@ -110,59 +72,12 @@ interface PipLayoutState {
   offset: InsetOffset
 }
 
-type WorkspaceMode = '2d' | '3d' | 'split'
-
-const MIN_SCALE = 0.45
-const MAX_SCALE = 3.5
-const ZOOM_IN_FACTOR = 1.12
-const ZOOM_OUT_FACTOR = 0.9
 const INSET_MARGIN = 8
-const WORKSPACE_MODES: Array<IconToggleOption<WorkspaceMode>> = [
-  { label: '3D', value: '3d', icon: Box },
-  { label: '2D', value: '2d', icon: Square },
-  { label: '3D + 2D', value: 'split', icon: PanelsTopLeft },
-]
+const NESTING_PANEL_PADDING = 40
+const NESTING_SHEET_GAP = 80
 
 function getOutlinePoints(board: Board) {
   return sampleShapePoints(board.outline)
-}
-
-function getSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
-  const rect = svg.getBoundingClientRect()
-  const viewBox = svg.viewBox.baseVal
-
-  return {
-    x: viewBox.x + (clientX - rect.left) * (viewBox.width / svg.clientWidth),
-    y: viewBox.y + (clientY - rect.top) * (viewBox.height / svg.clientHeight),
-  }
-}
-
-function toCanvasPoint(point: ControlPoint, transform: ViewTransform): ControlPoint {
-  return {
-    x: (point.x - transform.x) / transform.scale,
-    y: (point.y - transform.y) / transform.scale,
-  }
-}
-
-function zoomAtPoint(
-  transform: ViewTransform,
-  anchor: ControlPoint,
-  factor: number,
-): ViewTransform {
-  const nextScale = clamp(transform.scale * factor, MIN_SCALE, MAX_SCALE)
-  if (nextScale === transform.scale) {
-    return transform
-  }
-
-  return {
-    scale: nextScale,
-    x: transform.x + (transform.scale - nextScale) * anchor.x,
-    y: transform.y + (transform.scale - nextScale) * anchor.y,
-  }
-}
-
-function getZoomLabel(scale: number) {
-  return `${Math.round(scale * 100)}%`
 }
 
 function getInsetSize(panelWidth: number, level: Exclude<PipLevel, 'fullscreen'>) {
@@ -193,109 +108,31 @@ function clampPipOffset(
   }
 }
 
-function BoardCanvas({
-  board,
-  color,
-  isInteractionLocked = false,
-  isSelected,
-  isActive,
-  isDarkTheme,
-  canvasTransform,
-  onBoardPointerDown,
-  onPointMove,
-  onPointDragStart,
-}: BoardCanvasProps) {
-  const localPoints = useMemo(() => getOutlinePoints(board), [board])
-  const worldPoints = useMemo(
-    () =>
-      localPoints.map((point) => {
-        const rotated = rotatePoint(point, board.transform.rotation)
-        return {
-          x: rotated.x + board.transform.x,
-          y: rotated.y + board.transform.y,
-        }
-      }),
-    [board, localPoints],
-  )
+function pointsToPath(points: ControlPoint[]) {
+  if (points.length === 0) {
+    return ''
+  }
 
-  const fill = `color-mix(in oklch, ${color} 18%, white)`
-  const stroke = isActive
-    ? '#111111'
-    : color
-  const strokeWidth = isActive
-    ? isDarkTheme ? 3.2 : 2.4
-    : isSelected
-      ? isDarkTheme ? 2.2 : 1.8
-      : 1.2
+  const [firstPoint, ...restPoints] = points
+  if (!firstPoint) {
+    return ''
+  }
 
-  return (
-    <g>
-      <polygon
-        points={worldPoints.map(point => `${point.x},${point.y}`).join(' ')}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-        className={isInteractionLocked ? 'transition-opacity' : 'cursor-pointer transition-opacity'}
-        pointerEvents={isInteractionLocked ? 'none' : 'auto'}
-        onPointerDown={isInteractionLocked ? undefined : event => onBoardPointerDown(event, board)}
-      />
-      {isActive && !isInteractionLocked
-        ? localPoints.map((point, pointIndex) => {
-            const rotated = rotatePoint(point, board.transform.rotation)
-            const worldPoint = {
-              x: rotated.x + board.transform.x,
-              y: rotated.y + board.transform.y,
-            }
+  let path = `M ${firstPoint.x} ${firstPoint.y}`
 
-            return (
-              <circle
-                key={`${board.id}-${pointIndex}-${point.x}-${point.y}`}
-                cx={worldPoint.x}
-                cy={worldPoint.y}
-                r={isDarkTheme ? 7 : 6}
-                fill={isDarkTheme ? '#111111' : 'white'}
-                stroke={isDarkTheme ? '#f5f5f4' : color}
-                strokeWidth={isDarkTheme ? 2.6 : 2}
-                className="cursor-grab active:cursor-grabbing"
-                onPointerDown={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  onPointDragStart()
+  for (const point of restPoints) {
+    path += ` L ${point.x} ${point.y}`
+  }
 
-                  const svg = event.currentTarget.ownerSVGElement
-                  if (!svg) {
-                    return
-                  }
+  path += ' Z'
+  return path
+}
 
-                  const handlePointerMove = (moveEvent: PointerEvent) => {
-                    const svgPoint = getSvgPoint(svg, moveEvent.clientX, moveEvent.clientY)
-                    const canvasPoint = toCanvasPoint(svgPoint, canvasTransform)
-
-                    const nextLocalPoint = rotatePoint(
-                      {
-                        x: canvasPoint.x - board.transform.x,
-                        y: canvasPoint.y - board.transform.y,
-                      },
-                      -board.transform.rotation,
-                    )
-
-                    onPointMove(pointIndex, nextLocalPoint)
-                  }
-
-                  const handlePointerUp = () => {
-                    window.removeEventListener('pointermove', handlePointerMove)
-                    window.removeEventListener('pointerup', handlePointerUp)
-                  }
-
-                  window.addEventListener('pointermove', handlePointerMove)
-                  window.addEventListener('pointerup', handlePointerUp)
-                }}
-              />
-            )
-          })
-        : null}
-    </g>
-  )
+function offsetPoints(points: ControlPoint[], offsetX: number, offsetY: number) {
+  return points.map(point => ({
+    x: point.x + offsetX,
+    y: point.y + offsetY,
+  }))
 }
 
 function Field({ label, children }: FieldProps) {
@@ -323,47 +160,6 @@ function NumberInput({ value, onChange }: NumberInputProps) {
   )
 }
 
-function WorkspaceModeSwitch({
-  value,
-  onChange,
-}: {
-  value: WorkspaceMode
-  onChange: (value: WorkspaceMode) => void
-}) {
-  const currentIndex = WORKSPACE_MODES.findIndex(mode => mode.value === value)
-  const safeIndex = currentIndex >= 0 ? currentIndex : 0
-  const currentMode = WORKSPACE_MODES[safeIndex]
-
-  if (!currentMode) {
-    return null
-  }
-
-  function cycleMode() {
-    const nextIndex = (safeIndex + 1) % WORKSPACE_MODES.length
-    const nextMode = WORKSPACE_MODES[nextIndex]
-    if (nextMode) {
-      onChange(nextMode.value)
-    }
-  }
-
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        aria-label={`Workspace mode: ${currentMode.label}`}
-        title={currentMode.label}
-        className="inline-flex size-8 items-center justify-center border border-border bg-foreground text-background shadow-[0_14px_36px_rgba(0,0,0,0.14)] transition-colors hover:opacity-90 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
-        onClick={cycleMode}
-      >
-        <currentMode.icon className="size-4" />
-      </button>
-      <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap border border-border bg-popover px-1.5 py-1 text-[10px] text-popover-foreground opacity-0 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition-opacity group-hover:opacity-100 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
-        {currentMode.label}
-      </span>
-    </div>
-  )
-}
-
 export function EditorPage({
   document,
   selection,
@@ -375,20 +171,8 @@ export function EditorPage({
   const selectedBoardIds = selection.selectedBoardIds
   const activeBoardId = selection.activeBoardId
   const selectedBoard = document.boards.find(board => board.id === activeBoardId)
-  const bounds = useMemo(() => getDocumentBounds(document), [document])
-  const canvasViewBox = [
-    bounds.minX - 60,
-    bounds.minY - 60,
-    Math.max(400, bounds.width + 120),
-    Math.max(320, bounds.height + 120),
-  ].join(' ')
-  const [canvasTransform, setCanvasTransform] = useState<ViewTransform>({
-    scale: 1,
-    x: 0,
-    y: 0,
-  })
+  const nestingResult = useMemo(() => buildNestingLayout(document), [document])
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('split')
   const [isInsetDragging, setIsInsetDragging] = useState(false)
   const [pipLayout, setPipLayout] = useState<PipLayoutState>({
     level: 'compact',
@@ -397,8 +181,38 @@ export function EditorPage({
   const splitPanelRef = useRef<HTMLDivElement | null>(null)
 
   const pipLevel = pipLayout.level
-  const isPipFullscreen = workspaceMode === 'split' && pipLevel === 'fullscreen'
+  const isPipFullscreen = pipLevel === 'fullscreen'
   const isCreateBoardToolActive = activeTool === 'create-board'
+  const nestingSheets = useMemo(
+    () =>
+      nestingResult.sheets.map((sheet, index) => ({
+        offsetX: NESTING_PANEL_PADDING,
+        offsetY: NESTING_PANEL_PADDING + index * (sheet.height + NESTING_SHEET_GAP),
+        sheet,
+      })),
+    [nestingResult.sheets],
+  )
+  const nestingCanvasWidth = useMemo(() => {
+    const maxSheetWidth = nestingResult.sheets.reduce(
+      (currentMax, sheet) => Math.max(currentMax, sheet.width),
+      0,
+    )
+
+    return Math.max(720, maxSheetWidth + NESTING_PANEL_PADDING * 2)
+  }, [nestingResult.sheets])
+  const nestingCanvasHeight = useMemo(() => {
+    if (nestingResult.sheets.length === 0) {
+      return 520
+    }
+
+    const totalSheetHeight = nestingResult.sheets.reduce(
+      (sum, sheet) => sum + sheet.height,
+      0,
+    )
+    const totalGapHeight = Math.max(0, nestingResult.sheets.length - 1) * NESTING_SHEET_GAP
+
+    return totalSheetHeight + totalGapHeight + NESTING_PANEL_PADDING * 2
+  }, [nestingResult.sheets])
 
   function updateBoard(nextBoard: Board) {
     const nextDocument = updateDocumentTimestamp({
@@ -443,50 +257,6 @@ export function EditorPage({
     if (nextActiveBoard) {
       onSelectionChange(selectSingleBoard(nextActiveBoard.id))
     }
-  }
-
-  function startPan(event: ReactPointerEvent<SVGSVGElement>) {
-    if (event.button !== 0) {
-      return
-    }
-
-    event.preventDefault()
-
-    const svg = event.currentTarget
-    let lastPoint = getSvgPoint(svg, event.clientX, event.clientY)
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextPoint = getSvgPoint(svg, moveEvent.clientX, moveEvent.clientY)
-      const deltaX = nextPoint.x - lastPoint.x
-      const deltaY = nextPoint.y - lastPoint.y
-      lastPoint = nextPoint
-
-      setCanvasTransform(current => ({
-        ...current,
-        x: current.x + deltaX,
-        y: current.y + deltaY,
-      }))
-    }
-
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-  }
-
-  function handleWheelZoom(
-    event: ReactWheelEvent<SVGSVGElement>,
-  ) {
-    event.preventDefault()
-    event.stopPropagation()
-
-    const anchor = getSvgPoint(event.currentTarget, event.clientX, event.clientY)
-    const factor = event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR
-
-    setCanvasTransform(current => zoomAtPoint(current, anchor, factor))
   }
 
   function startInsetDrag(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -538,7 +308,7 @@ export function EditorPage({
     }))
   }
 
-  function cycleInsetLevel() {
+  function expandInsetLevel() {
     const panel = splitPanelRef.current
     if (!panel) {
       return
@@ -567,91 +337,49 @@ export function EditorPage({
         }
       }
 
-      return {
-        ...current,
-        level: 'compact',
-        offset: clampPipOffset(
-          panelRect.width,
-          panelRect.height,
-          'compact',
-          current.offset,
-        ),
-      }
+      return current
     })
   }
 
-  function startCanvasBackgroundInteraction(event: ReactPointerEvent<SVGSVGElement>) {
-    if (event.button !== 0 || event.target !== event.currentTarget) {
+  function shrinkInsetLevel() {
+    const panel = splitPanelRef.current
+    if (!panel) {
       return
     }
 
-    startPan(event)
+    const panelRect = panel.getBoundingClientRect()
+
+    setPipLayout(current => {
+      if (current.level === 'fullscreen') {
+        return {
+          ...current,
+          level: 'expanded',
+          offset: clampPipOffset(
+            panelRect.width,
+            panelRect.height,
+            'expanded',
+            current.offset,
+          ),
+        }
+      }
+
+      if (current.level === 'expanded') {
+        return {
+          ...current,
+          level: 'compact',
+          offset: clampPipOffset(
+            panelRect.width,
+            panelRect.height,
+            'compact',
+            current.offset,
+          ),
+        }
+      }
+
+      return current
+    })
   }
 
-  function handleBoardPointerDown(
-    event: ReactPointerEvent<SVGPolygonElement>,
-    board: Board,
-  ) {
-    if (isCreateBoardToolActive) {
-      event.preventDefault()
-      event.stopPropagation()
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    if (event.metaKey || event.ctrlKey) {
-      onSelectionChange(toggleBoardSelection(selection, board.id))
-      return
-    }
-
-    const isSelected = selection.selectedBoardIds.includes(board.id)
-    const nextSelection = isSelected
-      ? selection
-      : selectSingleBoard(board.id)
-
-    if (!isSelected) {
-      onSelectionChange(nextSelection)
-    }
-
-    const svg = event.currentTarget.ownerSVGElement
-    if (!svg) {
-      return
-    }
-
-    const startPoint = toCanvasPoint(
-      getSvgPoint(svg, event.clientX, event.clientY),
-      canvasTransform,
-    )
-    const selectionToMove = nextSelection.selectedBoardIds
-    const originDocument = document
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextPoint = toCanvasPoint(
-        getSvgPoint(svg, moveEvent.clientX, moveEvent.clientY),
-        canvasTransform,
-      )
-      const nextDocument = updateDocumentTimestamp(
-        moveBoardsByDelta(originDocument, selectionToMove, {
-          x: nextPoint.x - startPoint.x,
-          y: nextPoint.y - startPoint.y,
-        }),
-      )
-
-      onDocumentChange(nextDocument)
-    }
-
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-  }
-
-  const canvasMatrix = `matrix(${canvasTransform.scale} 0 0 ${canvasTransform.scale} ${canvasTransform.x} ${canvasTransform.y})`
   const render2DCanvas = (
     heightClass: string,
     options?: { compact?: boolean, showInsetControls?: boolean },
@@ -659,16 +387,19 @@ export function EditorPage({
     <div className="relative h-full overflow-hidden bg-[linear-gradient(135deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px)] dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px)]">
       <div className="pointer-events-none absolute top-2 right-2 z-30 flex items-center gap-1.5">
         <div className="pointer-events-auto flex items-center gap-1 bg-background/92 p-0.5 shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 px-1.5 text-[10px]"
-            onClick={() => setCanvasTransform({ scale: 1, x: 0, y: 0 })}
-          >
-            <Move className="size-3.5" />
-          </Button>
+          <span className="px-1.5 text-[10px] text-foreground/55">
+            {nestingResult.sheets.length}
+            {' '}
+            sheets
+          </span>
           {!options?.compact
-            ? <span className="min-w-10 px-1 text-right text-[10px] text-foreground/55">{getZoomLabel(canvasTransform.scale)}</span>
+            ? (
+                <span className="px-1 text-[10px] text-foreground/55">
+                  {document.boards.length}
+                  {' '}
+                  boards
+                </span>
+              )
             : null}
           {options?.showInsetControls
             ? (
@@ -677,11 +408,19 @@ export function EditorPage({
                     variant="outline"
                     size="sm"
                     className="h-6 px-1.5 text-[10px]"
-                    onClick={cycleInsetLevel}
+                    onClick={shrinkInsetLevel}
+                    disabled={pipLevel === 'compact'}
                   >
-                    {isPipFullscreen
-                      ? <Minimize2 className="size-3.5" />
-                      : <Maximize2 className="size-3.5" />}
+                    <Minus className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-1.5 text-[10px]"
+                    onClick={expandInsetLevel}
+                    disabled={pipLevel === 'fullscreen'}
+                  >
+                    <Plus className="size-3.5" />
                   </Button>
                   {!isPipFullscreen
                     ? (
@@ -704,39 +443,110 @@ export function EditorPage({
             : null}
         </div>
       </div>
-      <div className="overscroll-contain">
+      <div className="h-full overflow-auto p-3">
         <svg
-          viewBox={canvasViewBox}
-          className={`${heightClass} w-full cursor-grab active:cursor-grabbing bg-[oklch(0.985_0.005_85)] dark:bg-[oklch(0.19_0.008_84)]`}
-          onPointerDown={startCanvasBackgroundInteraction}
-          onWheelCapture={handleWheelZoom}
+          viewBox={`0 0 ${nestingCanvasWidth} ${nestingCanvasHeight}`}
+          className={`${heightClass} w-full bg-[oklch(0.985_0.005_85)] dark:bg-[oklch(0.19_0.008_84)]`}
         >
-          <g transform={canvasMatrix}>
-            {document.boards.map((board, index) => (
-              <BoardCanvas
-                key={board.id}
-                board={board}
-                color={mapBoardColor(index)}
-                isSelected={selectedBoardIds.includes(board.id)}
-                isActive={board.id === activeBoardId}
-                isDarkTheme={resolvedTheme === 'dark'}
-                canvasTransform={canvasTransform}
-                onBoardPointerDown={handleBoardPointerDown}
-                onPointDragStart={() => onSelectionChange(selectSingleBoard(board.id))}
-                onPointMove={(pointIndex, nextPoint) => {
-                  const nextOutlinePoints = replacePointAt(
-                    getOutlinePoints(board),
-                    pointIndex,
-                    nextPoint,
-                  )
-
-                  updateBoard(
-                    updateBoardOutlinePoints(board, nextOutlinePoints),
-                  )
-                }}
+          {nestingSheets.map(({ sheet, offsetX, offsetY }) => (
+            <g key={`sheet-${sheet.index}`}>
+              <rect
+                x={offsetX}
+                y={offsetY}
+                width={sheet.width}
+                height={sheet.height}
+                fill={resolvedTheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.85)'}
+                stroke={resolvedTheme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.18)'}
+                strokeDasharray="12 8"
+                strokeWidth={2}
               />
-            ))}
-          </g>
+              <text
+                x={offsetX}
+                y={offsetY - 12}
+                fill={resolvedTheme === 'dark' ? '#cbd5e1' : '#334155'}
+                fontSize="18"
+                fontWeight="600"
+              >
+                {`Sheet ${sheet.index + 1} · ${sheet.width} × ${sheet.height} mm`}
+              </text>
+              {sheet.placements.map((placement) => {
+                const placementOutline = offsetPoints(placement.outline, offsetX + placement.x, offsetY + placement.y)
+                const placementHoles = placement.holes.map(points =>
+                  offsetPoints(points, offsetX + placement.x, offsetY + placement.y),
+                )
+                const fillColor = selectedBoardIds.includes(placement.boardId)
+                  ? resolvedTheme === 'dark'
+                    ? 'rgba(96,165,250,0.3)'
+                    : 'rgba(59,130,246,0.22)'
+                  : resolvedTheme === 'dark'
+                    ? 'rgba(226,232,240,0.12)'
+                    : 'rgba(148,163,184,0.18)'
+                const strokeColor = placement.boardId === activeBoardId
+                  ? resolvedTheme === 'dark' ? '#f8fafc' : '#0f172a'
+                  : resolvedTheme === 'dark' ? '#7dd3fc' : '#2563eb'
+                const compoundPath = [
+                  pointsToPath(placementOutline),
+                  ...placementHoles.map(points => pointsToPath(points)),
+                ].join(' ')
+
+                return (
+                  <g
+                    key={placement.boardId}
+                    className="cursor-pointer"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+
+                      if (event.metaKey || event.ctrlKey) {
+                        onSelectionChange(toggleBoardSelection(selection, placement.boardId))
+                        return
+                      }
+
+                      onSelectionChange(selectSingleBoard(placement.boardId))
+                    }}
+                  >
+                    <path
+                      d={compoundPath}
+                      fill={fillColor}
+                      fillRule="evenodd"
+                      stroke={strokeColor}
+                      strokeWidth={placement.boardId === activeBoardId ? 3 : 2}
+                    />
+                    <text
+                      x={offsetX + placement.x + 12}
+                      y={offsetY + placement.y + 22}
+                      fill={resolvedTheme === 'dark' ? '#e2e8f0' : '#1e293b'}
+                      fontSize="14"
+                      fontWeight="600"
+                    >
+                      {placement.name}
+                    </text>
+                    <text
+                      x={offsetX + placement.x + 12}
+                      y={offsetY + placement.y + 40}
+                      fill={resolvedTheme === 'dark' ? '#94a3b8' : '#475569'}
+                      fontSize="12"
+                    >
+                      {`${Math.round(placement.width)} × ${Math.round(placement.height)} mm`}
+                    </text>
+                  </g>
+                )
+              })}
+            </g>
+          ))}
+          {nestingSheets.length === 0
+            ? (
+                <text
+                  x={nestingCanvasWidth / 2}
+                  y={nestingCanvasHeight / 2}
+                  fill={resolvedTheme === 'dark' ? '#94a3b8' : '#475569'}
+                  fontSize="20"
+                  textAnchor="middle"
+                >
+                  Add boards in 3D to generate a nesting layout.
+                </text>
+              )
+            : null}
         </svg>
       </div>
     </div>
@@ -751,58 +561,37 @@ export function EditorPage({
       <WorkspaceViewport>
         <section className="relative h-full min-h-0 overflow-hidden">
           <div className="h-full min-h-0 overflow-hidden">
-            {workspaceMode === '2d'
-              ? render2DCanvas('h-full')
-              : null}
-
-            {workspaceMode === '3d'
-              ? (
-                  <BoardPreview3D
-                    createBoardModeEnabled={isCreateBoardToolActive}
-                    document={document}
-                    selection={selection}
-                    onSelectionChange={onSelectionChange}
-                    onDocumentChange={onDocumentChange}
-                    canvasClassName="h-full min-h-[520px]"
-                  />
-                )
-              : null}
-
-            {workspaceMode === 'split'
-              ? (
-                  <div
-                    ref={splitPanelRef}
-                    className="relative h-full overflow-hidden"
-                  >
-                    {!isPipFullscreen
-                      ? (
-                          <BoardPreview3D
-                            createBoardModeEnabled={isCreateBoardToolActive}
-                            document={document}
-                            selection={selection}
-                            onSelectionChange={onSelectionChange}
-                            onDocumentChange={onDocumentChange}
-                            canvasClassName="h-full min-h-[520px]"
-                          />
-                        )
-                      : null}
-                    <div
-                      className={`absolute z-30 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-[width,height,bottom,right] duration-200 ease-out'}`}
-                      style={{
-                        bottom: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.y,
-                        height: isPipFullscreen ? '100%' : floatingSize.height,
-                        right: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.x,
-                        width: isPipFullscreen ? '100%' : floatingSize.width,
-                      }}
-                    >
-                      {render2DCanvas(isPipFullscreen ? 'h-full' : 'h-full', {
-                        compact: floatingLevel === 'compact',
-                        showInsetControls: true,
-                      })}
-                    </div>
-                  </div>
-                )
-              : null}
+            <div
+              ref={splitPanelRef}
+              className="relative h-full overflow-hidden"
+            >
+              {!isPipFullscreen
+                ? (
+                    <BoardPreview3D
+                      createBoardModeEnabled={isCreateBoardToolActive}
+                      document={document}
+                      selection={selection}
+                      onSelectionChange={onSelectionChange}
+                      onDocumentChange={onDocumentChange}
+                      canvasClassName="h-full min-h-[520px]"
+                    />
+                  )
+                : null}
+              <div
+                className={`absolute z-30 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-[width,height,bottom,right] duration-200 ease-out'}`}
+                style={{
+                  bottom: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.y,
+                  height: isPipFullscreen ? '100%' : floatingSize.height,
+                  right: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.x,
+                  width: isPipFullscreen ? '100%' : floatingSize.width,
+                }}
+              >
+                {render2DCanvas('h-full', {
+                  compact: floatingLevel === 'compact',
+                  showInsetControls: true,
+                })}
+              </div>
+            </div>
           </div>
           <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,320px)] lg:w-[320px]">
@@ -1012,18 +801,6 @@ export function EditorPage({
                     </div>
                   )}
             </OverlayPanel>
-          </div>
-
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3">
-            <FloatingTray className="pointer-events-auto">
-              <div className="flex items-center gap-2">
-                <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground/45">
-                  Workspace
-                </div>
-                <div className="h-5 w-px bg-border" />
-                <WorkspaceModeSwitch value={workspaceMode} onChange={setWorkspaceMode} />
-              </div>
-            </FloatingTray>
           </div>
         </section>
       </WorkspaceViewport>
