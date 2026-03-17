@@ -7,7 +7,10 @@ import tailwindcss from "@tailwindcss/vite"
 export default defineConfig({
   plugins: [
     react(),
-    babel({ presets: [reactCompilerPreset()] }),
+    // @ts-expect-error - upstream PluginOptions typing is too strict, but this is valid at runtime
+    babel({
+      presets: [reactCompilerPreset()]
+    }),
     tailwindcss(),
   ],
   resolve: {
