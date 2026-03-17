@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update How It Works"
+  short_description: "Sync how-it-works docs after key feature changes"
+  default_prompt: "Use $update-how-it-works to update how-it-works docs after a meaningful implementation change."
