@@ -259,7 +259,7 @@ function findPlacementCandidate(
 }
 
 function sortFootprints(footprints: NestingBoardFootprint[]) {
-  return [...footprints].sort((left, right) => {
+  return footprints.toSorted((left, right) => {
     const maxSideDelta = Math.max(right.width, right.height) - Math.max(left.width, left.height)
     if (maxSideDelta !== 0) {
       return maxSideDelta
@@ -283,7 +283,8 @@ function placeCandidateOnSheet(
   if (shelf) {
     shelf.widthUsed = candidate.placement.x + candidate.placement.width + gutter
     shelf.height = Math.max(shelf.height, candidate.placement.height)
-  } else {
+  }
+  else {
     sheet.shelves.push({
       height: candidate.placement.height,
       widthUsed: candidate.placement.x + candidate.placement.width + gutter,
