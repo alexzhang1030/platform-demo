@@ -1,18 +1,15 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Board, ControlPoint, PatternDocument } from '@xtool-demo/protocol'
+import type { ElementRef } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
 import {
-  Edges,
-  GizmoHelper,
-  GizmoViewport,
-  Grid,
   OrbitControls,
   PerspectiveCamera,
 } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { sampleShapePoints } from '@xtool-demo/core'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import * as THREE from 'three'
+import * as THREE from 'three/webgpu'
 
 import { useTheme } from '@/components/theme-provider'
 import {
@@ -21,6 +18,7 @@ import {
   selectSingleBoard,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
+import { WebGPUGrid } from './webgpu-grid'
 
 interface BoardPreview3DProps {
   document: PatternDocument
@@ -41,7 +39,7 @@ interface BoardMeshProps {
 }
 
 interface SceneProps extends BoardPreview3DProps {
-  controlsRef: React.RefObject<OrbitControlsHandle | null>
+  controlsRef: React.RefObject<ElementRef<typeof OrbitControls> | null>
   resolvedTheme: 'dark' | 'light'
 }
 
@@ -51,8 +49,12 @@ interface DragState {
   startPoint: THREE.Vector3
 }
 
-interface OrbitControlsHandle {
-  enabled: boolean
+interface WebGPUCanvasRendererParameters {
+  alpha?: boolean
+  antialias?: boolean
+  canvas?: HTMLCanvasElement | OffscreenCanvas
+  depth?: boolean
+  stencil?: boolean
 }
 
 function toBoardShape(points: ControlPoint[]) {
@@ -90,6 +92,10 @@ function BoardMesh({
       depth: board.thickness,
       steps: 1,
     })
+    const indexCount = nextGeometry.index?.count
+    if (typeof indexCount === 'number' && Number.isFinite(indexCount)) {
+      nextGeometry.setDrawRange(0, indexCount)
+    }
     nextGeometry.computeVertexNormals()
     return nextGeometry
   }, [board])
@@ -118,15 +124,6 @@ function BoardMesh({
         metalness={0.05}
         roughness={0.68}
       />
-      {isSelected
-        ? (
-            <Edges
-              color="#111111"
-              scale={resolvedTheme === 'dark' ? 1.012 : 1.008}
-              threshold={24}
-            />
-          )
-        : null}
     </mesh>
   )
 }
@@ -141,6 +138,7 @@ function Scene({
 }: SceneProps) {
   const { camera, gl } = useThree()
   const dragStateRef = useRef<DragState | null>(null)
+  const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
 
   function getPlaneIntersectionFromRay(ray: THREE.Ray) {
@@ -170,17 +168,20 @@ function Scene({
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current
-      if (!dragState) {
-        return
-      }
-
       const rect = gl.domElement.getBoundingClientRect()
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
 
       raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
       const planePoint = getPlaneIntersectionFromRay(raycasterRef.current.ray)
+      if (planePoint) {
+        gridCursorPositionRef.current.set(planePoint.x, planePoint.y)
+      }
+
+      const dragState = dragStateRef.current
+      if (!dragState) {
+        return
+      }
       if (!planePoint) {
         return
       }
@@ -252,21 +253,10 @@ function Scene({
   return (
     <>
       <color attach="background" args={[resolvedTheme === 'dark' ? '#191816' : '#f3efe6']} />
+      <WebGPUGrid cursorPositionRef={gridCursorPositionRef} resolvedTheme={resolvedTheme} />
       <ambientLight intensity={resolvedTheme === 'dark' ? 1.22 : 1.05} />
       <directionalLight intensity={resolvedTheme === 'dark' ? 1.48 : 1.28} position={[480, -320, 520]} />
       <directionalLight intensity={resolvedTheme === 'dark' ? 0.62 : 0.4} position={[-260, 220, 220]} />
-      <Grid
-        cellColor={resolvedTheme === 'dark' ? '#3f3b37' : '#d6d3d1'}
-        cellSize={40}
-        fadeDistance={1800}
-        fadeStrength={2}
-        infiniteGrid
-        followCamera
-        position={[0, 0, -0.2]}
-        rotation={[Math.PI / 2, 0, 0]}
-        sectionColor={resolvedTheme === 'dark' ? '#928a82' : '#78716c'}
-        sectionSize={200}
-      />
       {document.boards.map((board, index) => (
         <BoardMesh
           key={board.id}
@@ -288,12 +278,6 @@ function Scene({
         minDistance={80}
         screenSpacePanning
       />
-      <GizmoHelper alignment="bottom-right" margin={[88, 88]}>
-        <GizmoViewport
-          axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-          labelColor={resolvedTheme === 'dark' ? '#f5f5f4' : '#111827'}
-        />
-      </GizmoHelper>
     </>
   )
 }
@@ -306,12 +290,38 @@ export function BoardPreview3D({
   canvasClassName,
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
-  const controlsRef = useRef<OrbitControlsHandle | null>(null)
+  const controlsRef = useRef<ElementRef<typeof OrbitControls> | null>(null)
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))] dark:bg-[linear-gradient(180deg,oklch(0.24_0.01_84),oklch(0.16_0.01_82))]">
       <div className={canvasClassName ?? 'h-[380px]'}>
-        <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
+        <Canvas
+          dpr={[1, 1.5]}
+          gl={async (props) => {
+            const rendererParameters: WebGPUCanvasRendererParameters = {
+              alpha: props.alpha,
+              antialias: props.antialias,
+              depth: props.depth,
+              stencil: props.stencil,
+            }
+
+            if (props.canvas instanceof HTMLCanvasElement) {
+              rendererParameters.canvas = props.canvas
+            } else if ('OffscreenCanvas' in globalThis && props.canvas instanceof OffscreenCanvas) {
+              rendererParameters.canvas = props.canvas
+            }
+
+            const renderer = new THREE.WebGPURenderer(rendererParameters)
+            renderer.toneMapping = THREE.ACESFilmicToneMapping
+            renderer.toneMappingExposure = 0.9
+            await renderer.init()
+            return renderer
+          }}
+          shadows={{
+            enabled: true,
+            type: THREE.PCFShadowMap,
+          }}
+        >
           <Scene
             document={document}
             selection={selection}

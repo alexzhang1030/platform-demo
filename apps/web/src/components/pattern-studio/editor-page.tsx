@@ -211,7 +211,7 @@ function BoardCanvas({
 
             return (
               <circle
-                key={`${board.id}-${point.x}-${point.y}`}
+                key={`${board.id}-${pointIndex}-${point.x}-${point.y}`}
                 cx={worldPoint.x}
                 cy={worldPoint.y}
                 r={isDarkTheme ? 7 : 6}
