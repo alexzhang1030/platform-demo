@@ -18,6 +18,7 @@ import {
   selectSingleBoard,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
+import { PatternStudioLights } from './pattern-studio-lights'
 import { SelectionOutline } from './selection-outline'
 import { WebGPUGrid } from './webgpu-grid'
 
@@ -107,12 +108,16 @@ function BoardMesh({
 
   const materialColor = isSelected
     ? resolvedTheme === 'dark'
-      ? `color-mix(in oklch, ${color} 84%, white)`
-      : `color-mix(in oklch, ${color} 76%, white)`
-    : `color-mix(in oklch, ${color} 54%, white)`
+      ? `color-mix(in oklch, ${color} 72%, white)`
+      : `color-mix(in oklch, ${color} 78%, black)`
+    : resolvedTheme === 'dark'
+      ? `color-mix(in oklch, ${color} 58%, black)`
+      : `color-mix(in oklch, ${color} 72%, black)`
 
   return (
     <mesh
+      castShadow
+      receiveShadow
       ref={(object) => {
         onMeshChange(board.id, object)
       }}
@@ -125,10 +130,10 @@ function BoardMesh({
     >
       <meshStandardMaterial
         color={materialColor}
-        emissive={isSelected && resolvedTheme === 'dark' ? '#000000' : isSelected ? color : '#000000'}
-        emissiveIntensity={isSelected ? resolvedTheme === 'dark' ? 0.18 : 0.34 : 0}
-        metalness={0.05}
-        roughness={0.68}
+        emissive={isSelected ? color : '#000000'}
+        emissiveIntensity={isSelected ? resolvedTheme === 'dark' ? 0.12 : 0.08 : 0}
+        metalness={0.02}
+        roughness={0.84}
       />
     </mesh>
   )
@@ -288,12 +293,10 @@ function Scene({
 
   return (
     <>
-      <color attach="background" args={[resolvedTheme === 'dark' ? '#191816' : '#f3efe6']} />
+      <color attach="background" args={[resolvedTheme === 'dark' ? '#0f131a' : '#ddd4c1']} />
       <WebGPUGrid cursorPositionRef={gridCursorPositionRef} resolvedTheme={resolvedTheme} />
       <SelectionOutline selectedObjectsRef={selectedObjectsRef} />
-      <ambientLight intensity={resolvedTheme === 'dark' ? 1.22 : 1.05} />
-      <directionalLight intensity={resolvedTheme === 'dark' ? 1.48 : 1.28} position={[480, -320, 520]} />
-      <directionalLight intensity={resolvedTheme === 'dark' ? 0.62 : 0.4} position={[-260, 220, 220]} />
+      <PatternStudioLights resolvedTheme={resolvedTheme} />
       {document.boards.map((board, index) => (
         <BoardMesh
           key={board.id}
@@ -329,9 +332,12 @@ export function BoardPreview3D({
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
   const controlsRef = useRef<ElementRef<typeof OrbitControls> | null>(null)
+  const wrapperClassName = resolvedTheme === 'dark'
+    ? 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.2_0.012_255),oklch(0.12_0.012_255))]'
+    : 'relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.91_0.02_85),oklch(0.82_0.025_80))]'
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden border border-border bg-[linear-gradient(180deg,oklch(0.985_0.006_85),oklch(0.93_0.015_85))] dark:bg-[linear-gradient(180deg,oklch(0.24_0.01_84),oklch(0.16_0.01_82))]">
+    <div className={wrapperClassName}>
       <div className={canvasClassName ?? 'h-[380px]'}>
         <Canvas
           dpr={[1, 1.5]}
