@@ -1,4 +1,4 @@
-import type { MutableRefObject } from 'react'
+import type { RefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { outline } from 'three/addons/tsl/display/OutlineNode.js'
 import { add, oscSine, pass, time, uniform, vec4 } from 'three/tsl'
@@ -10,7 +10,7 @@ interface RendererWithInit {
 }
 
 interface SelectionOutlineProps {
-  selectedObjectsRef: MutableRefObject<THREE.Object3D[]>
+  selectedObjectsRef: RefObject<THREE.Object3D[]>
 }
 
 function isRendererWithInit(value: unknown): value is RendererWithInit {
