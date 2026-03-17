@@ -1,7 +1,7 @@
 import type { MutableRefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { outline } from 'three/addons/tsl/display/OutlineNode.js'
-import { add, pass, uniform, vec4 } from 'three/tsl'
+import { add, oscSine, pass, time, uniform, vec4 } from 'three/tsl'
 import * as THREE from 'three/webgpu'
 import { useFrame, useThree } from '@react-three/fiber'
 
@@ -73,13 +73,15 @@ export function SelectionOutline({ selectedObjectsRef }: SelectionOutlineProps) 
     }
 
     const scenePass = pass(scene, camera)
-    const edgeStrength = uniform(3)
-    const edgeGlow = uniform(0)
-    const edgeThickness = uniform(1)
-    const visibleEdgeColor = uniform(new THREE.Color(0xffffff))
-    const hiddenEdgeColor = uniform(new THREE.Color(0xf3ff47))
+    const edgeStrength = uniform(5)
+    const edgeGlow = uniform(0.5)
+    const edgeThickness = uniform(1.5)
+    const pulsePeriod = uniform(3)
+    const visibleEdgeColor = uniform(new THREE.Color(0x00aaff))
+    const hiddenEdgeColor = uniform(new THREE.Color(0x7dd3fc))
 
     const outlinePass = outline(scene, camera, {
+      downSampleRatio: 1,
       edgeGlow,
       edgeThickness,
       selectedObjects: selectedObjectsRef.current,
@@ -89,10 +91,13 @@ export function SelectionOutline({ selectedObjectsRef }: SelectionOutlineProps) 
       .mul(visibleEdgeColor)
       .add(outlinePass.hiddenEdge.mul(hiddenEdgeColor))
       .mul(edgeStrength)
+    const period = time.div(pulsePeriod).mul(2)
+    const osc = oscSine(period).mul(0.5).add(0.5)
+    const outlinePulse = pulsePeriod.greaterThan(0).select(outlineColor.mul(osc), outlineColor)
 
     const renderPipeline = new THREE.RenderPipeline(
       gl,
-      vec4(add(scenePass.rgb, outlineColor), scenePass.a),
+      vec4(add(scenePass.rgb, outlinePulse), scenePass.a),
     )
 
     renderPipelineRef.current = renderPipeline
