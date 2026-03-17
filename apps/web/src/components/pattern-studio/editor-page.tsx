@@ -101,6 +101,13 @@ interface InsetOffset {
   y: number
 }
 
+type PipLevel = 'compact' | 'expanded' | 'fullscreen'
+
+interface PipLayoutState {
+  level: PipLevel
+  offset: InsetOffset
+}
+
 type WorkspaceMode = '2d' | '3d' | 'split'
 
 const MIN_SCALE = 0.45
@@ -156,10 +163,31 @@ function getZoomLabel(scale: number) {
   return `${Math.round(scale * 100)}%`
 }
 
-function getInsetSize(panelWidth: number, isExpanded: boolean) {
+function getInsetSize(panelWidth: number, level: Exclude<PipLevel, 'fullscreen'>) {
+  if (level === 'expanded') {
+    return {
+      width: Math.min(panelWidth * 0.52, 720),
+      height: 360,
+    }
+  }
+
   return {
-    width: isExpanded ? Math.min(panelWidth * 0.52, 720) : Math.min(panelWidth * 0.24, 320),
-    height: isExpanded ? 360 : 200,
+    width: Math.min(panelWidth * 0.24, 320),
+    height: 200,
+  }
+}
+
+function clampPipOffset(
+  panelWidth: number,
+  panelHeight: number,
+  level: Exclude<PipLevel, 'fullscreen'>,
+  offset: InsetOffset,
+): InsetOffset {
+  const size = getInsetSize(panelWidth, level)
+
+  return {
+    x: clamp(offset.x, 0, Math.max(0, panelWidth - size.width - INSET_MARGIN * 2)),
+    y: clamp(offset.y, 0, Math.max(0, panelHeight - size.height - INSET_MARGIN * 2)),
   }
 }
 
@@ -356,10 +384,15 @@ export function EditorPage({
     y: 0,
   })
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('split')
-  const [isInsetExpanded, setIsInsetExpanded] = useState(false)
   const [isInsetDragging, setIsInsetDragging] = useState(false)
-  const [insetOffset, setInsetOffset] = useState<InsetOffset>({ x: 0, y: 0 })
+  const [pipLayout, setPipLayout] = useState<PipLayoutState>({
+    level: 'compact',
+    offset: { x: 0, y: 0 },
+  })
   const splitPanelRef = useRef<HTMLDivElement | null>(null)
+
+  const pipLevel = pipLayout.level
+  const isPipFullscreen = workspaceMode === 'split' && pipLevel === 'fullscreen'
 
   function updateBoard(nextBoard: Board) {
     const nextDocument = updateDocumentTimestamp({
@@ -455,12 +488,11 @@ export function EditorPage({
     event.stopPropagation()
 
     const panel = splitPanelRef.current
-    if (!panel) {
+    if (!panel || pipLayout.level === 'fullscreen') {
       return
     }
 
     const panelRect = panel.getBoundingClientRect()
-    const insetSize = getInsetSize(panelRect.width, isInsetExpanded)
     let lastClientX = event.clientX
     let lastClientY = event.clientY
 
@@ -472,17 +504,14 @@ export function EditorPage({
       lastClientX = moveEvent.clientX
       lastClientY = moveEvent.clientY
 
-      setInsetOffset(current => ({
-        x: clamp(
-          current.x - deltaX,
-          0,
-          panelRect.width - insetSize.width - INSET_MARGIN * 2,
-        ),
-        y: clamp(
-          current.y - deltaY,
-          0,
-          panelRect.height - insetSize.height - INSET_MARGIN * 2,
-        ),
+      setPipLayout(current => ({
+        ...current,
+        offset: current.level === 'fullscreen'
+          ? current.offset
+          : clampPipOffset(panelRect.width, panelRect.height, current.level, {
+              x: current.offset.x - deltaX,
+              y: current.offset.y - deltaY,
+            }),
       }))
     }
 
@@ -494,6 +523,55 @@ export function EditorPage({
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+  }
+
+  function resetInsetPosition() {
+    setPipLayout(current => ({
+      ...current,
+      offset: { x: 0, y: 0 },
+    }))
+  }
+
+  function cycleInsetLevel() {
+    const panel = splitPanelRef.current
+    if (!panel) {
+      return
+    }
+
+    const panelRect = panel.getBoundingClientRect()
+
+    setPipLayout(current => {
+      if (current.level === 'compact') {
+        return {
+          ...current,
+          level: 'expanded',
+          offset: clampPipOffset(
+            panelRect.width,
+            panelRect.height,
+            'expanded',
+            current.offset,
+          ),
+        }
+      }
+
+      if (current.level === 'expanded') {
+        return {
+          ...current,
+          level: 'fullscreen',
+        }
+      }
+
+      return {
+        ...current,
+        level: 'compact',
+        offset: clampPipOffset(
+          panelRect.width,
+          panelRect.height,
+          'compact',
+          current.offset,
+        ),
+      }
+    })
   }
 
   function startCanvasBackgroundInteraction(event: ReactPointerEvent<SVGSVGElement>) {
@@ -587,24 +665,28 @@ export function EditorPage({
                     variant="outline"
                     size="sm"
                     className="h-6 px-1.5 text-[10px]"
-                    onClick={() => setIsInsetExpanded(current => !current)}
+                    onClick={cycleInsetLevel}
                   >
-                    {isInsetExpanded
+                    {isPipFullscreen
                       ? <Minimize2 className="size-3.5" />
                       : <Maximize2 className="size-3.5" />}
                   </Button>
-                  <button
-                    type="button"
-                    className="inline-flex size-6 items-center justify-center border border-border bg-background text-foreground transition-colors hover:bg-foreground hover:text-background"
-                    onPointerDown={startInsetDrag}
-                    onDoubleClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setInsetOffset({ x: 0, y: 0 })
-                    }}
-                  >
-                    <Grip className="size-3.5" />
-                  </button>
+                  {!isPipFullscreen
+                    ? (
+                        <button
+                          type="button"
+                          className="inline-flex size-6 items-center justify-center border border-border bg-background text-foreground transition-colors hover:bg-foreground hover:text-background"
+                          onPointerDown={startInsetDrag}
+                          onDoubleClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            resetInsetPosition()
+                          }}
+                        >
+                          <Grip className="size-3.5" />
+                        </button>
+                      )
+                    : null}
                 </>
               )
             : null}
@@ -648,6 +730,10 @@ export function EditorPage({
     </div>
   )
 
+  const splitPanelWidth = splitPanelRef.current?.clientWidth ?? 1280
+  const floatingLevel = pipLevel === 'fullscreen' ? 'expanded' : pipLevel
+  const floatingSize = getInsetSize(splitPanelWidth, floatingLevel)
+
   return (
     <AppShell route="editor">
       <WorkspaceViewport>
@@ -675,25 +761,28 @@ export function EditorPage({
                     ref={splitPanelRef}
                     className="relative h-full overflow-hidden"
                   >
-                    <BoardPreview3D
-                      document={document}
-                      selection={selection}
-                      onSelectionChange={onSelectionChange}
-                      onDocumentChange={onDocumentChange}
-                      canvasClassName="h-full min-h-[520px]"
-                    />
+                    {!isPipFullscreen
+                      ? (
+                          <BoardPreview3D
+                            document={document}
+                            selection={selection}
+                            onSelectionChange={onSelectionChange}
+                            onDocumentChange={onDocumentChange}
+                            canvasClassName="h-full min-h-[520px]"
+                          />
+                        )
+                      : null}
                     <div
-                      className={`absolute z-30 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-all'} ${isInsetExpanded
-                        ? 'w-[min(52vw,720px)]'
-                        : 'w-[min(24vw,320px)]'
-                      }`}
+                      className={`absolute z-30 overflow-hidden bg-background/96 shadow-[0_18px_48px_rgba(0,0,0,0.18)] backdrop-blur-sm dark:shadow-[0_20px_54px_rgba(0,0,0,0.42)] ${isInsetDragging ? '' : 'transition-[width,height,bottom,right] duration-200 ease-out'}`}
                       style={{
-                        bottom: INSET_MARGIN + insetOffset.y,
-                        right: INSET_MARGIN + insetOffset.x,
+                        bottom: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.y,
+                        height: isPipFullscreen ? '100%' : floatingSize.height,
+                        right: isPipFullscreen ? 0 : INSET_MARGIN + pipLayout.offset.x,
+                        width: isPipFullscreen ? '100%' : floatingSize.width,
                       }}
                     >
-                      {render2DCanvas(isInsetExpanded ? 'h-[360px]' : 'h-[200px]', {
-                        compact: !isInsetExpanded,
+                      {render2DCanvas(isPipFullscreen ? 'h-full' : 'h-full', {
+                        compact: floatingLevel === 'compact',
                         showInsetControls: true,
                       })}
                     </div>
