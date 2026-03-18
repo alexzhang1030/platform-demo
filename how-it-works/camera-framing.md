@@ -2,13 +2,12 @@
 
 ## 目标
 
-3D 预览最初用的是一组固定相机参数：
+当前相机逻辑只做两件事：
 
-- 固定位置
-- 固定 target
-- 固定 `near / far`
+- 在 3D 视图首次挂载时，给一个合理的初始 framing
+- 在用户需要时，通过 `Reset camera` 回到这份初始 framing
 
-这会导致一个问题：只要 board 稍微偏离原点，或者相机稍微 orbit 一下，物体就可能被裁切掉。
+它不再在 document 每次变化时强行重算相机。
 
 ## 关键文件
 
@@ -34,17 +33,25 @@
 - `maxDimension`
   工作区最大尺寸，再加一层 padding
 
-## 第二步：用 bounds 推导相机 framing
+## 第二步：只生成一次初始 framing
 
-相机不再看固定原点，而是看 `bounds.center`。
+当前实现仍然会从 `bounds` 推导：
 
-初始位置也不是魔法常量，而是：
+- 初始 `position`
+- 初始 `target`
+- 初始 `near / far`
 
-- 从 `center` 出发
-- 沿着一个固定斜上方向偏移
-- 偏移距离按 `maxDimension` 计算
+但这份 framing 只在 `BoardPreview3D` 初始化时计算一次，并存成稳定状态。
 
-这样 board 在原点附近、偏到一边、或者尺寸变大时，相机都能跟着一起适配。
+这样做的原因很直接：
+
+- 如果把 framing 跟 `document` 绑定
+- 拖动物体时 `document` 会持续变化
+- 相机就会不断被重写
+
+用户会感觉视角在自己缩放或跳动。
+
+现在这条逻辑已经删掉了，所以移动 board 不会再带着相机一起“自动重新看全场景”。
 
 ## 第三步：动态 near / far
 
@@ -65,13 +72,13 @@
 
 所以现在用的是“相对尺寸 + clamp”的折中方式。
 
-## 为什么保留 OrbitControls
+## Reset Camera
 
-这次修的是 framing / clipping，不是控制系统。
+底部的 `Reset camera` 会直接调用 `OrbitControls.reset()`。
 
-所以实现上故意保持收敛：
+因为 controls 的初始 target / camera state 就来自那份稳定的初始 framing，所以 reset 的结果和首次进入页面时是一致的。
 
-- 继续沿用 `PerspectiveCamera + OrbitControls`
-- 只改 camera target、camera position、`near / far`
+这比“每次 document 变化时自动重框”更可控：
 
-这样风险最小，也更容易确认问题是否真的被修掉。
+- 用户决定什么时候回到全局视角
+- 普通编辑过程不会被相机反向打断

@@ -26,6 +26,7 @@ export interface BoardTransform {
   x: number
   y: number
   rotation: number
+  orientation?: 'flat' | 'upright'
 }
 
 export interface Board {
@@ -63,6 +64,7 @@ const boardTransformSchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.number().finite(),
+  orientation: z.enum(['flat', 'upright']).optional(),
 })
 
 const boardSchema = z.object({
@@ -202,26 +204,7 @@ export function createDefaultPatternDocument(): PatternDocument {
       createdAt: timestamp,
       updatedAt: timestamp,
     },
-    boards: [
-      {
-        id: 'board-main',
-        name: 'Main panel',
-        thickness: 18,
-        material: 'birch-ply',
-        transform: { x: 0, y: 0, rotation: 0 },
-        outline: createRoundedRectangleShape(220, 140, 16),
-        holes: [],
-      },
-      {
-        id: 'board-brace',
-        name: 'Brace',
-        thickness: 12,
-        material: 'birch-ply',
-        transform: { x: 260, y: 24, rotation: 8 },
-        outline: createRectangleShape(140, 48),
-        holes: [],
-      },
-    ],
+    boards: [],
   }
 }
 

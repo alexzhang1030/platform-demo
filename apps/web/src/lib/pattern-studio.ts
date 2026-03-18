@@ -1,8 +1,17 @@
 import type {
   Board,
   ControlPoint,
+  Path2DShape,
   PatternDocument,
 } from '@xtool-demo/protocol'
+import {
+  createDovetailSocket,
+  createUprightBoardOutline,
+  findClosestUprightBoardMoveSnap,
+  getUprightBoardHeight,
+  getUprightBoardLength,
+  normalizeUprightBoardSpan,
+} from '@xtool-demo/core'
 import {
   createCircleShape,
   createRectangleShape,
@@ -36,10 +45,228 @@ export interface BoardSpan {
   start: ControlPoint
 }
 
+export interface BoardMoveConnection {
+  anchor: 'end' | 'start'
+  boardId: string
+  localX: number
+  offset: ControlPoint
+  point: ControlPoint
+}
+
+export interface BoardMoveConnectionPreview {
+  boards: Board[]
+  point: ControlPoint
+}
+
+export interface BoardGeometrySnapshot {
+  boardId: string
+  holes: Path2DShape[]
+  outline: Path2DShape
+}
+
 export interface PresetOption {
   id: ShapePreset
   label: string
   description: string
+}
+
+export const CREATE_BOARD_GRID_SIZE = 40
+export const CREATE_BOARD_DEFAULT_LENGTH = CREATE_BOARD_GRID_SIZE
+export const CREATE_BOARD_DEFAULT_HEIGHT = 220
+export const CREATE_BOARD_DEFAULT_THICKNESS = 18
+
+export function normalizeCreateBoardSpan(
+  span: BoardSpan,
+  minimumLength = CREATE_BOARD_DEFAULT_LENGTH,
+): BoardSpan {
+  return normalizeUprightBoardSpan(span, minimumLength)
+}
+
+function getCreateBoardRotation(span: BoardSpan) {
+  const deltaX = span.end.x - span.start.x
+  const deltaY = span.end.y - span.start.y
+  return (Math.atan2(deltaY, deltaX) * 180) / Math.PI
+}
+
+function getCreateBoardLength(span: BoardSpan) {
+  const deltaX = span.end.x - span.start.x
+  const deltaY = span.end.y - span.start.y
+  return Math.hypot(deltaX, deltaY)
+}
+
+function buildStandingBoard(
+  span: BoardSpan,
+): Board {
+  const normalizedSpan = normalizeCreateBoardSpan(span)
+  const length = getCreateBoardLength(normalizedSpan)
+
+  return {
+    id: getRandomId('board'),
+    name: 'Standing board',
+    thickness: CREATE_BOARD_DEFAULT_THICKNESS,
+    material: 'birch-ply',
+    transform: {
+      x: normalizedSpan.start.x,
+      y: normalizedSpan.start.y,
+      rotation: getCreateBoardRotation(normalizedSpan),
+      orientation: 'upright',
+    },
+    outline: createUprightBoardOutline(
+      length,
+      CREATE_BOARD_DEFAULT_HEIGHT,
+      null,
+    ),
+    holes: [],
+  }
+}
+
+function applyConnectionSocket(board: Board, localX: number): Board {
+  const boardHeight = getUprightBoardHeight(board)
+  const boardLength = getUprightBoardLength(board)
+  if (!boardHeight || !boardLength) {
+    return board
+  }
+
+  return {
+    ...board,
+    holes: [...board.holes, createDovetailSocket(boardLength, boardHeight, localX)],
+  }
+}
+
+function clonePathShape(shape: Path2DShape): Path2DShape {
+  return {
+    closed: shape.closed,
+    segments: shape.segments.map(segment => ({
+      kind: segment.kind,
+      points: segment.points.map(point => ({
+        x: point.x,
+        y: point.y,
+      })),
+    })),
+  }
+}
+
+export function snapshotBoardGeometry(board: Board): BoardGeometrySnapshot {
+  return {
+    boardId: board.id,
+    holes: board.holes.map(clonePathShape),
+    outline: clonePathShape(board.outline),
+  }
+}
+
+export function restoreBoardGeometry(
+  document: PatternDocument,
+  snapshots: BoardGeometrySnapshot[],
+): PatternDocument {
+  const snapshotMap = new Map(snapshots.map(snapshot => [snapshot.boardId, snapshot]))
+
+  return {
+    ...document,
+    boards: document.boards.map((board) => {
+      const snapshot = snapshotMap.get(board.id)
+      if (!snapshot) {
+        return board
+      }
+
+      return {
+        ...board,
+        holes: snapshot.holes.map(clonePathShape),
+        outline: clonePathShape(snapshot.outline),
+      }
+    }),
+  }
+}
+
+export function createStandingBoardPreview(
+  span: BoardSpan,
+): Board {
+  return buildStandingBoard(span)
+}
+
+export function commitStandingBoardFromSpan(
+  span: BoardSpan,
+) {
+  return buildStandingBoard(span)
+}
+
+export function findBoardMoveConnection(
+  document: PatternDocument,
+  movingBoardId: string,
+): BoardMoveConnection | null {
+  const movingBoard = document.boards.find(board => board.id === movingBoardId)
+  if (!movingBoard || movingBoard.transform.orientation !== 'upright') {
+    return null
+  }
+
+  const snap = findClosestUprightBoardMoveSnap(movingBoard, document.boards)
+  if (!snap) {
+    return null
+  }
+
+  return {
+    anchor: snap.anchor,
+    boardId: snap.boardId,
+    localX: snap.localX,
+    offset: snap.offset,
+    point: snap.point,
+  }
+}
+
+export function applyBoardMoveConnection(
+  document: PatternDocument,
+  movingBoardId: string,
+  connection: BoardMoveConnection,
+): PatternDocument {
+  return {
+    ...document,
+    boards: document.boards.map((board) => {
+      if (board.id === movingBoardId) {
+        const boardHeight = getUprightBoardHeight(board)
+        const boardLength = getUprightBoardLength(board)
+
+        if (!boardHeight || !boardLength) {
+          return board
+        }
+
+        return {
+          ...board,
+          outline: createUprightBoardOutline(
+            boardLength,
+            boardHeight,
+            {
+              anchor: connection.anchor,
+              boardHeight,
+            },
+          ),
+        }
+      }
+
+      if (board.id === connection.boardId) {
+        return applyConnectionSocket(board, connection.localX)
+      }
+
+      return board
+    }),
+  }
+}
+
+export function buildBoardMoveConnectionPreview(
+  document: PatternDocument,
+  movingBoardId: string,
+  connection: BoardMoveConnection,
+): BoardMoveConnectionPreview {
+  const connectedDocument = applyBoardMoveConnection(
+    document,
+    movingBoardId,
+    connection,
+  )
+
+  return {
+    boards: connectedDocument.boards.filter(board =>
+      board.id === movingBoardId || board.id === connection.boardId,
+    ),
+    point: connection.point,
+  }
 }
 
 export const PRESET_OPTIONS: PresetOption[] = [
@@ -216,7 +443,7 @@ export function createBoardFromPreset(preset: ShapePreset, index: number): Board
       name: 'Brace panel',
       thickness: 12,
       material: 'birch-ply',
-      transform: { x: xOffset, y: yOffset, rotation: 0 },
+      transform: { x: xOffset, y: yOffset, rotation: 0, orientation: 'flat' },
       outline: createRectangleShape(180, 60),
       holes: [],
     }
@@ -228,7 +455,7 @@ export function createBoardFromPreset(preset: ShapePreset, index: number): Board
       name: 'Circular cap',
       thickness: 9,
       material: 'birch-ply',
-      transform: { x: xOffset, y: yOffset, rotation: 0 },
+      transform: { x: xOffset, y: yOffset, rotation: 0, orientation: 'flat' },
       outline: createCircleShape(52),
       holes: [],
     }
@@ -239,7 +466,7 @@ export function createBoardFromPreset(preset: ShapePreset, index: number): Board
     name: 'Rounded panel',
     thickness: 18,
     material: 'birch-ply',
-    transform: { x: xOffset, y: yOffset, rotation: 0 },
+    transform: { x: xOffset, y: yOffset, rotation: 0, orientation: 'flat' },
     outline: createRoundedRectangleShape(220, 140, 18),
     holes: [],
   }
@@ -258,44 +485,9 @@ export function createBoardFromRectangle(rectangle: BoardRectangle): Board {
       x: rectangle.minX,
       y: rectangle.minY,
       rotation: 0,
+      orientation: 'flat',
     },
     outline: createRectangleShape(width, height),
-    holes: [],
-  }
-}
-
-export function createBoardFromSpan(span: BoardSpan, depth = 120): Board {
-  const deltaX = span.end.x - span.start.x
-  const deltaY = span.end.y - span.start.y
-  const length = Math.hypot(deltaX, deltaY)
-
-  if (length < 1) {
-    return createBoardFromRectangle({
-      minX: span.start.x,
-      minY: span.start.y,
-      maxX: span.start.x + 1,
-      maxY: span.start.y + 1,
-    })
-  }
-
-  const directionX = deltaX / length
-  const directionY = deltaY / length
-  const perpendicularX = -directionY
-  const perpendicularY = directionX
-  const cornerX = span.start.x - perpendicularX * (depth / 2)
-  const cornerY = span.start.y - perpendicularY * (depth / 2)
-
-  return {
-    id: getRandomId('board'),
-    name: 'Custom board',
-    thickness: 18,
-    material: 'birch-ply',
-    transform: {
-      x: cornerX,
-      y: cornerY,
-      rotation: (Math.atan2(deltaY, deltaX) * 180) / Math.PI,
-    },
-    outline: createRectangleShape(length, depth),
     holes: [],
   }
 }

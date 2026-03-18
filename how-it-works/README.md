@@ -11,7 +11,9 @@
 - `pip-workspace.md`
   解释 editor 里 2D PiP 的三挡模型、右下角锚定方式和 `+ / -` 控制策略。
 - `camera-framing.md`
-  解释 3D 预览相机如何根据 board bounds 自动 framing，并避免裁切。
+  解释 3D 预览相机如何只做初始 framing、为什么不再跟着 document 自动重算，以及 `Reset camera` 怎么工作。
+- `create-board.md`
+  解释 3D create-board 如何生成立板、如何做吸附，以及吸附后为什么会把燕尾榫直接写进 board 几何。
 - `lighting.md`
   解释 3D 预览的三盏方向光和环境光如何工作。
 - `webgpu-grid.md`
@@ -24,8 +26,10 @@
 - `apps/web/src/components/pattern-studio/chrome.tsx`
 - `apps/web/src/components/pattern-studio/editor-page.tsx`
 - `apps/web/src/components/pattern-studio/board-preview-3d.tsx`
+- `apps/web/src/lib/pattern-studio.ts`
 - `packages/core/src/nesting.ts`
 - `packages/core/src/geometry.ts`
+- `packages/core/src/upright-board.ts`
 - `apps/web/src/components/pattern-studio/pattern-studio-lights.tsx`
 - `apps/web/src/components/pattern-studio/webgpu-grid.tsx`
 - `apps/web/src/components/pattern-studio/selection-outline.tsx`

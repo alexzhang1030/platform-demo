@@ -6,6 +6,7 @@ import type {
 } from '@xtool-demo/protocol'
 
 export * from './nesting'
+export * from './upright-board'
 
 export interface Bounds {
   minX: number
