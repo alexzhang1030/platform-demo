@@ -19,6 +19,7 @@ import {
   Plus,
   Minus,
   Shapes,
+  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -59,6 +60,11 @@ interface NumberInputProps {
   onChange: (value: number) => void
 }
 
+interface BoardEditorContentProps {
+  board: Board | null
+  onBoardChange: (board: Board) => void
+}
+
 interface InsetOffset {
   x: number
   y: number
@@ -74,6 +80,13 @@ interface PipLayoutState {
 
 interface PanelSize {
   height: number
+  width: number
+}
+
+interface BoardPreviewSheet {
+  height: number
+  holes: ControlPoint[][]
+  outline: ControlPoint[]
   width: number
 }
 
@@ -140,6 +153,52 @@ function offsetPoints(points: ControlPoint[], offsetX: number, offsetY: number) 
   }))
 }
 
+function getBoardPreviewSheet(board: Board): BoardPreviewSheet {
+  const outline = getOutlinePoints(board)
+  const holes = board.holes.map(hole => sampleShapePoints(hole))
+
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  for (const point of outline) {
+    minX = Math.min(minX, point.x)
+    maxX = Math.max(maxX, point.x)
+    minY = Math.min(minY, point.y)
+    maxY = Math.max(maxY, point.y)
+  }
+
+  if (
+    !Number.isFinite(minX)
+    || !Number.isFinite(maxX)
+    || !Number.isFinite(minY)
+    || !Number.isFinite(maxY)
+  ) {
+    return {
+      height: 100,
+      holes: [],
+      outline: [],
+      width: 100,
+    }
+  }
+
+  return {
+    height: Math.max(1, maxY - minY),
+    holes: holes.map(points =>
+      points.map(point => ({
+        x: point.x - minX,
+        y: point.y - minY,
+      })),
+    ),
+    outline: outline.map(point => ({
+      x: point.x - minX,
+      y: point.y - minY,
+    })),
+    width: Math.max(1, maxX - minX),
+  }
+}
+
 function Field({ label, children }: FieldProps) {
   return (
     <label className="block">
@@ -165,6 +224,112 @@ function NumberInput({ value, onChange }: NumberInputProps) {
   )
 }
 
+function BoardEditorContent({
+  board,
+  onBoardChange,
+}: BoardEditorContentProps) {
+  if (!board) {
+    return (
+      <div className="mt-2 border border-dashed border-border px-3 py-6 text-center text-[11px] text-foreground/55">
+        Select a board to inspect and edit its properties.
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 space-y-3 overflow-auto pr-0.5">
+      <Field label="Board name">
+        <input
+          value={board.name}
+          onChange={event =>
+            onBoardChange({
+              ...board,
+              name: event.target.value,
+            })}
+          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
+        />
+      </Field>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <Field label="Thickness">
+          <NumberInput
+            value={board.thickness}
+            onChange={value =>
+              onBoardChange({
+                ...board,
+                thickness: clamp(value, 1, 120),
+              })}
+          />
+        </Field>
+        <Field label="Rotation">
+          <NumberInput
+            value={board.transform.rotation}
+            onChange={value =>
+              onBoardChange({
+                ...board,
+                transform: {
+                  ...board.transform,
+                  rotation: value,
+                },
+              })}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <Field label="X offset">
+          <NumberInput
+            value={board.transform.x}
+            onChange={value =>
+              onBoardChange({
+                ...board,
+                transform: {
+                  ...board.transform,
+                  x: value,
+                },
+              })}
+          />
+        </Field>
+        <Field label="Y offset">
+          <NumberInput
+            value={board.transform.y}
+            onChange={value =>
+              onBoardChange({
+                ...board,
+                transform: {
+                  ...board.transform,
+                  y: value,
+                },
+              })}
+          />
+        </Field>
+      </div>
+
+      <Field label="Material">
+        <input
+          value={board.material ?? ''}
+          onChange={event =>
+            onBoardChange({
+              ...board,
+              material: event.target.value,
+            })}
+          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
+        />
+      </Field>
+      <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
+        <Shapes className="size-3" />
+        <span>
+          {getOutlinePoints(board).length}
+          {' '}
+          pts
+        </span>
+        <span>·</span>
+        <span>{formatMillimeters(board.thickness)}</span>
+      </div>
+    </div>
+  )
+}
+
 export function EditorPage({
   document,
   selection,
@@ -187,6 +352,7 @@ export function EditorPage({
     height: 720,
     width: 1280,
   })
+  const [isBoardEditDialogOpen, setIsBoardEditDialogOpen] = useState(false)
   const splitPanelRef = useRef<HTMLDivElement | null>(null)
 
   const pipLevel = pipLayout.level
@@ -222,6 +388,16 @@ export function EditorPage({
 
     return totalSheetHeight + totalGapHeight + NESTING_PANEL_PADDING * 2
   }, [nestingResult.sheets])
+  const boardPreviewSheet = useMemo(
+    () => selectedBoard ? getBoardPreviewSheet(selectedBoard) : null,
+    [selectedBoard],
+  )
+  const boardPreviewCanvasWidth = boardPreviewSheet
+    ? boardPreviewSheet.width + NESTING_PANEL_PADDING * 2
+    : 100
+  const boardPreviewCanvasHeight = boardPreviewSheet
+    ? boardPreviewSheet.height + NESTING_PANEL_PADDING * 2
+    : 100
 
   useEffect(() => {
     const panel = splitPanelRef.current
@@ -248,6 +424,29 @@ export function EditorPage({
       observer.disconnect()
     }
   }, [])
+
+  useEffect(() => {
+    if (isBoardEditDialogOpen && !selectedBoard) {
+      setIsBoardEditDialogOpen(false)
+    }
+  }, [isBoardEditDialogOpen, selectedBoard])
+
+  useEffect(() => {
+    if (!isBoardEditDialogOpen) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsBoardEditDialogOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isBoardEditDialogOpen])
 
   function updateBoard(nextBoard: Board) {
     const nextDocument = updateDocumentTimestamp({
@@ -292,6 +491,19 @@ export function EditorPage({
     if (nextActiveBoard) {
       onSelectionChange(selectSingleBoard(nextActiveBoard.id))
     }
+
+    if (filteredBoards.length === 0) {
+      setIsBoardEditDialogOpen(false)
+    }
+  }
+
+  function openBoardEditDialog(boardId: string) {
+    onSelectionChange(selectSingleBoard(boardId))
+    setIsBoardEditDialogOpen(true)
+  }
+
+  function closeBoardEditDialog() {
+    setIsBoardEditDialogOpen(false)
   }
 
   function startInsetDrag(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -539,6 +751,11 @@ export function EditorPage({
 
                       onSelectionChange(selectSingleBoard(placement.boardId))
                     }}
+                    onDoubleClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      openBoardEditDialog(placement.boardId)
+                    }}
                   >
                     <path
                       d={compoundPath}
@@ -606,6 +823,7 @@ export function EditorPage({
                       createBoardModeEnabled={isCreateBoardToolActive}
                       document={document}
                       selection={selection}
+                      onBoardEditRequest={openBoardEditDialog}
                       onSelectionChange={onSelectionChange}
                       onDocumentChange={onDocumentChange}
                       canvasClassName="h-full min-h-[520px]"
@@ -737,106 +955,84 @@ export function EditorPage({
                 title={selectedBoard?.name ?? 'Board'}
               />
 
-              {selectedBoard
-                ? (
-                    <div className="mt-2 max-h-[min(34vh,360px)] space-y-3 overflow-auto pr-0.5 lg:max-h-[min(58vh,620px)]">
-                      <Field label="Board name">
-                        <input
-                          value={selectedBoard.name}
-                          onChange={event =>
-                            updateBoard({
-                              ...selectedBoard,
-                              name: event.target.value,
-                            })}
-                          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
-                        />
-                      </Field>
-
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                        <Field label="Thickness">
-                          <NumberInput
-                            value={selectedBoard.thickness}
-                            onChange={value =>
-                              updateBoard({
-                                ...selectedBoard,
-                                thickness: clamp(value, 1, 120),
-                              })}
-                          />
-                        </Field>
-                        <Field label="Rotation">
-                          <NumberInput
-                            value={selectedBoard.transform.rotation}
-                            onChange={value =>
-                              updateBoard({
-                                ...selectedBoard,
-                                transform: {
-                                  ...selectedBoard.transform,
-                                  rotation: value,
-                                },
-                              })}
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                        <Field label="X offset">
-                          <NumberInput
-                            value={selectedBoard.transform.x}
-                            onChange={value =>
-                              updateBoard({
-                                ...selectedBoard,
-                                transform: {
-                                  ...selectedBoard.transform,
-                                  x: value,
-                                },
-                              })}
-                          />
-                        </Field>
-                        <Field label="Y offset">
-                          <NumberInput
-                            value={selectedBoard.transform.y}
-                            onChange={value =>
-                              updateBoard({
-                                ...selectedBoard,
-                                transform: {
-                                  ...selectedBoard.transform,
-                                  y: value,
-                                },
-                              })}
-                          />
-                        </Field>
-                      </div>
-
-                      <Field label="Material">
-                        <input
-                          value={selectedBoard.material ?? ''}
-                          onChange={event =>
-                            updateBoard({
-                              ...selectedBoard,
-                              material: event.target.value,
-                            })}
-                          className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
-                        />
-                      </Field>
-                      <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
-                        <Shapes className="size-3" />
-                        <span>
-                          {getOutlinePoints(selectedBoard).length}
-                          {' '}
-                          pts
-                        </span>
-                        <span>·</span>
-                        <span>{formatMillimeters(selectedBoard.thickness)}</span>
-                      </div>
-                    </div>
-                  )
-                : (
-                    <div className="mt-2 border border-dashed border-border px-3 py-6 text-center text-[11px] text-foreground/55">
-                      Select a board to inspect and edit its properties.
-                    </div>
-                  )}
+              <div className="max-h-[min(34vh,360px)] lg:max-h-[min(58vh,620px)]">
+                <BoardEditorContent board={selectedBoard ?? null} onBoardChange={updateBoard} />
+              </div>
             </OverlayPanel>
           </div>
+          {isBoardEditDialogOpen && selectedBoard
+            ? (
+                <div
+                  className="pointer-events-auto absolute inset-0 z-40 bg-background"
+                  onClick={closeBoardEditDialog}
+                >
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`${selectedBoard.name} 2D preview`}
+                    className="relative h-full w-full overflow-hidden bg-[linear-gradient(135deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(0,0,0,0.03)_0,rgba(0,0,0,0.03)_1px,transparent_1px,transparent_20px)] dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px),linear-gradient(45deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_1px,transparent_1px,transparent_20px)]"
+                    onClick={event => event.stopPropagation()}
+                  >
+                    <div className="pointer-events-none absolute top-4 left-4 z-10 flex flex-col gap-1 border border-border bg-background/92 px-3 py-2 text-foreground shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]">
+                      <span className="text-[13px] font-semibold tracking-[-0.03em]">
+                        {selectedBoard.name}
+                      </span>
+                      <span className="text-[11px] text-foreground/55">
+                        {`${Math.round(boardPreviewSheet?.width ?? 0)} × ${Math.round(boardPreviewSheet?.height ?? 0)} mm`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Close board editor"
+                      className="absolute top-4 right-4 z-10 inline-flex size-9 items-center justify-center border border-border bg-background/92 text-foreground shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm transition-colors hover:bg-muted dark:shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
+                      onClick={closeBoardEditDialog}
+                    >
+                      <X className="size-4" />
+                    </button>
+                    <svg
+                      viewBox={`0 0 ${boardPreviewCanvasWidth} ${boardPreviewCanvasHeight}`}
+                      preserveAspectRatio="xMidYMid meet"
+                      className="block h-full w-full bg-[oklch(0.985_0.005_85)] dark:bg-[oklch(0.19_0.008_84)]"
+                    >
+                      <rect
+                        x={NESTING_PANEL_PADDING}
+                        y={NESTING_PANEL_PADDING}
+                        width={boardPreviewSheet?.width ?? 0}
+                        height={boardPreviewSheet?.height ?? 0}
+                        fill="transparent"
+                        stroke={resolvedTheme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.18)'}
+                        strokeDasharray="12 8"
+                        strokeWidth={2}
+                      />
+                      {boardPreviewSheet
+                        ? (
+                            <path
+                              d={[
+                                pointsToPath(offsetPoints(
+                                  boardPreviewSheet.outline,
+                                  NESTING_PANEL_PADDING,
+                                  NESTING_PANEL_PADDING,
+                                )),
+                                ...boardPreviewSheet.holes.map(points =>
+                                  pointsToPath(offsetPoints(
+                                    points,
+                                    NESTING_PANEL_PADDING,
+                                    NESTING_PANEL_PADDING,
+                                  )),
+                                ),
+                              ].join(' ')}
+                              fill={resolvedTheme === 'dark' ? 'rgba(96,165,250,0.3)' : 'rgba(59,130,246,0.22)'}
+                              fillRule="evenodd"
+                              stroke={resolvedTheme === 'dark' ? '#f8fafc' : '#0f172a'}
+                              strokeWidth={3}
+                            />
+                          )
+                        : null}
+                    </svg>
+                  </div>
+                </div>
+              )
+            : null}
         </section>
       </WorkspaceViewport>
     </AppShell>

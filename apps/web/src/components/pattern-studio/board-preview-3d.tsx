@@ -39,6 +39,7 @@ interface BoardPreview3DProps {
   createBoardModeEnabled?: boolean
   document: PatternDocument
   selection: EditorSelectionState
+  onBoardEditRequest?: (boardId: string) => void
   onSelectionChange: (selection: EditorSelectionState) => void
   onDocumentChange: (document: PatternDocument) => void
   canvasClassName?: string
@@ -47,6 +48,7 @@ interface BoardPreview3DProps {
 interface BoardMeshProps {
   board: Board
   onMeshChange: (boardId: string, object: THREE.Object3D | null) => void
+  onDoubleClick?: (event: ThreeEvent<MouseEvent>, board: Board) => void
   onPointerDown?: (event: ThreeEvent<PointerEvent>, board: Board) => void
   onPointerMove?: (event: ThreeEvent<PointerEvent>) => void
   onPointerUp?: (event: ThreeEvent<PointerEvent>) => void
@@ -63,6 +65,7 @@ interface SceneProps extends BoardPreview3DProps {
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
   latestDocumentRef: RefObject<PatternDocument>
+  onBoardEditRequest?: (boardId: string) => void
   onCreateBoardDraftChange: (draft: CreateBoardDraft | null) => void
   onGroupStateChange: (groupId: string) => void
   resolvedTheme: 'dark' | 'light'
@@ -260,6 +263,7 @@ function toUprightBoardShape(points: ControlPoint[]) {
 function BoardMesh({
   board,
   onMeshChange,
+  onDoubleClick,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -312,6 +316,7 @@ function BoardMesh({
         }}
         geometry={geometry}
         rotation={board.transform.orientation === 'upright' ? [Math.PI / 2, 0, 0] : [0, 0, 0]}
+        onDoubleClick={onDoubleClick ? event => onDoubleClick(event, board) : undefined}
         onPointerDown={onPointerDown ? event => onPointerDown(event, board) : undefined}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -339,6 +344,7 @@ function Scene({
   document,
   groupCounterRef,
   latestDocumentRef,
+  onBoardEditRequest,
   selection,
   onSelectionChange,
   onCreateBoardDraftChange,
@@ -355,6 +361,7 @@ function Scene({
   const createCursorRingRef = useRef<THREE.Mesh | null>(null)
   const createCursorSphereRef = useRef<THREE.Mesh | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
+  const dragMovedRef = useRef(false)
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
@@ -542,6 +549,9 @@ function Scene({
 
       const deltaX = planePoint.x - dragState.startPoint.x
       const deltaY = -(planePoint.y - dragState.startPoint.y)
+      if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
+        dragMovedRef.current = true
+      }
       const movedDocument = moveBoardsByDelta(
         dragState.document,
         dragState.selectedBoardIds,
@@ -624,6 +634,7 @@ function Scene({
     }
 
     event.stopPropagation()
+    dragMovedRef.current = false
 
     const planePoint = getPlaneIntersection(event)
     if (!planePoint) {
@@ -680,6 +691,16 @@ function Scene({
   function handleBoardPointerUp(event: ThreeEvent<PointerEvent>) {
     event.stopPropagation()
     finishBoardDrag()
+  }
+
+  function handleBoardDoubleClick(event: ThreeEvent<MouseEvent>, board: Board) {
+    if (createBoardModeEnabled || isCameraPanModifierPressed || dragMovedRef.current) {
+      dragMovedRef.current = false
+      return
+    }
+
+    event.stopPropagation()
+    onBoardEditRequest?.(board.id)
   }
 
   function handleCreateBoardPointerMove(event: ThreeEvent<PointerEvent>) {
@@ -779,6 +800,7 @@ function Scene({
           key={board.id}
           board={board}
           onMeshChange={handleMeshChange}
+          onDoubleClick={createBoardModeEnabled ? undefined : handleBoardDoubleClick}
           onPointerDown={createBoardModeEnabled ? undefined : handleBoardPointerDown}
           onPointerMove={createBoardModeEnabled ? undefined : handleBoardPointerMove}
           onPointerUp={createBoardModeEnabled ? undefined : handleBoardPointerUp}
@@ -873,6 +895,7 @@ export function BoardPreview3D({
   createBoardModeEnabled = false,
   document,
   selection,
+  onBoardEditRequest,
   onSelectionChange,
   onDocumentChange,
   canvasClassName,
@@ -1016,6 +1039,7 @@ export function BoardPreview3D({
             document={document}
             groupCounterRef={groupCounterRef}
             latestDocumentRef={latestDocumentRef}
+            onBoardEditRequest={onBoardEditRequest}
             selection={selection}
             onSelectionChange={onSelectionChange}
             onCreateBoardDraftChange={setCreateBoardDraft}
