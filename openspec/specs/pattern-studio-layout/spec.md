@@ -10,13 +10,19 @@ The system SHALL render the pattern studio routes inside a shell where the main 
 - **THEN** the shell does not present the route as a conventional padded content page
 
 ### Requirement: Editor uses overlay support panels
-The system SHALL render the editor with the 2D/3D board workspace as the dominant surface, while board lists, inspectors, mode controls, and export actions are presented as overlay side panels, floating bars, or inset cards.
+The system SHALL render the editor with the 3D board workspace as the dominant interactive surface, while board lists, inspectors, mode controls, export actions, the 2D nesting output, and focused board-edit dialogs are presented as overlays, floating bars, inset panels, or dialogs.
 
 #### Scenario: User edits boards
 - **WHEN** the editor route is visible
-- **THEN** the board workspace remains the primary visual surface
-- **THEN** secondary controls are grouped into overlays that can coexist with the workspace
-- **THEN** existing editor operations such as selecting boards, adjusting points, changing workspace mode, and exporting remain available
+- **THEN** the 3D workspace SHALL remain the primary interactive surface for editing boards
+- **THEN** the 2D panel SHALL behave as a nesting/output view rather than a second editing canvas
+- **THEN** secondary controls SHALL remain grouped into overlays or dialogs that can coexist with the workspace
+- **THEN** existing editor operations such as selecting boards, creating boards, adjusting points, changing workspace mode, and exporting remain available
+
+#### Scenario: Focused board editing opens in a dialog
+- **WHEN** the user opens board editing from a direct board interaction
+- **THEN** the editor MAY present the board editing surface inside a dialog without leaving the current route
+- **THEN** closing the dialog SHALL return the user to the same workspace context
 
 ### Requirement: Generator follows the same canvas-first layout model
 The system SHALL render the generator with the SVG preview as the dominant surface and treat import, parse status, JSON source, and export actions as supporting overlays instead of permanent split columns.
