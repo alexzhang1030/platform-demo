@@ -415,12 +415,18 @@ function BoardMesh({
     return [0, 0, 0]
   }, [board.transform.orientation, board.transform.pitch, board.transform.flipPitch])
 
+  useEffect(() => {
+    if (!geometry) {
+      onMeshChange(board.id, null)
+    }
+  }, [geometry, board.id, onMeshChange])
+
   return (
     <group
       position={[board.transform.x, -board.transform.y, board.transform.z ?? 0]}
       rotation={[0, 0, (-board.transform.rotation * Math.PI) / 180]}
     >
-      {geometry && (
+      {geometry ? (
         <mesh
           castShadow={!preview}
           receiveShadow={!preview}
@@ -445,7 +451,7 @@ function BoardMesh({
             transparent={preview}
           />
         </mesh>
-      )}
+      ) : null}
     </group>
   )
 }
@@ -835,14 +841,15 @@ function Scene({
 
     for (const boardId of selection.selectedBoardIds) {
       const object = boardObjectsRef.current.get(boardId)
-      if (object) {
+      // Check if object is still mounted and has valid geometry
+      if (object && object.parent) {
         selectedObjectsRef.current.push(object)
       }
     }
 
     for (const assemblyId of selection.selectedAssemblyIds) {
       const object = assemblyObjectsRef.current.get(assemblyId)
-      if (object) {
+      if (object && object.parent) {
         selectedObjectsRef.current.push(object)
       }
     }
