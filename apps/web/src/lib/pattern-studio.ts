@@ -297,16 +297,20 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
   const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }
   
   const checkFlip = (board: Board) => {
-    // Standard normal points "outward" from origin (0,0) towards +Y
+    // rad = 0 means baseline is (1,0). The standard perpendicular is (0, -1) in doc space (UP).
+    // Our normal vector below was (0, 1) which is DOWN. 
+    // We want the board to extend towards the centroid.
     const rad = (board.transform.rotation * Math.PI) / 180
+    // Standard "outward" vector in document space (DOWN if rotation=0)
     const normal = { x: -Math.sin(rad), y: Math.cos(rad) }
     
     // Vector from board origin to centroid
     const toCentroid = { x: centroid.x - board.transform.x, y: centroid.y - board.transform.y }
     const dot = toCentroid.x * normal.x + toCentroid.y * normal.y
     
-    // If dot < 0, the inward direction is -Y, so we need to flip
-    return dot < 0
+    // If dot > 0, the normal points towards the centroid. 
+    // Since normal is DOWN and standard extension is UP, we FLIP if dot > 0.
+    return dot > 0
   }
 
   const roofA: Board = {

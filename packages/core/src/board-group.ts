@@ -84,16 +84,16 @@ export function getBoardAnchorPositions3D(board: Board): Record<BoardAnchorSide,
       // Top anchor is at the end of the tilted board
       const topZ = zBase + boardHeight * Math.sin(pitchRad)
       const topOffsetDist = boardHeight * Math.cos(pitchRad) * flipFactor
-      const topX = midX + topOffsetDist * -baseline.direction.y
-      const topY = midY + topOffsetDist * baseline.direction.x
+      const topX = midX + topOffsetDist * baseline.direction.y
+      const topY = midY + topOffsetDist * -baseline.direction.x
 
       // Side anchors are halfway up the tilted board
       const sideZ = zBase + (boardHeight / 2) * Math.sin(pitchRad)
       const sideOffsetDist = (boardHeight / 2) * Math.cos(pitchRad) * flipFactor
-      const leftX = baseline.start.x + sideOffsetDist * -baseline.direction.y
-      const leftY = baseline.start.y + sideOffsetDist * baseline.direction.x
-      const rightX = baseline.end.x + sideOffsetDist * -baseline.direction.y
-      const rightY = baseline.end.y + sideOffsetDist * baseline.direction.x
+      const leftX = baseline.start.x + sideOffsetDist * baseline.direction.y
+      const leftY = baseline.start.y + sideOffsetDist * -baseline.direction.x
+      const rightX = baseline.end.x + sideOffsetDist * baseline.direction.y
+      const rightY = baseline.end.y + sideOffsetDist * -baseline.direction.x
 
       return {
         left: { x: leftX, y: -leftY, z: sideZ },
