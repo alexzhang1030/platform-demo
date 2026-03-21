@@ -624,7 +624,14 @@ export function EditorPage({
 
     const result = commitSketch(document, sketchPoints)
     onDocumentChange(result.document)
-    onSelectionChange(result.selection)
+    
+    // Delay selection by two frames to ensure WebGPU geometries are ready
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        onSelectionChange(result.selection)
+      })
+    })
+
     setSketchPoints([])
     setHoverPoint(null)
   }
