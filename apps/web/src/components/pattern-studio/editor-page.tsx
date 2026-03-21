@@ -330,7 +330,7 @@ function BoardEditorContent({
         <Field label={`Pitch: ${board.transform.pitch ?? (board.transform.orientation === 'upright' ? 90 : 0)}°`}>
           <input
             type="range"
-            min="0"
+            min="-180"
             max="180"
             step="1"
             value={board.transform.pitch ?? (board.transform.orientation === 'upright' ? 90 : 0)}
