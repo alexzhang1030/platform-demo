@@ -1,38 +1,36 @@
 ## Context
 
-The current board creation tools require precise click-drag-click interactions. The Smart Pen tool aims to provide a more natural, fluid way to prototype by interpreting freehand sketches on the ground plane.
+Feedback from initial testing showed that freehand drawing was difficult to control. A point-based "Smart Polygon" tool provides better precision while still allowing for rapid layout generation.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Implement a `pen-sketch` tool that records freehand mouse/pointer paths.
-- Classify closed loops as either "Rectangle" (enclosure) or "Circle" (panel).
-- Automatically generate precisely aligned boards from these sketches.
-- Automatically group generated enclosure boards.
+- Implement a point-collection mode for shape definition.
+- Support real-time visualization of the polygon boundary.
+- Convert committed polygons into enclosures (rectangles) or panels (circles).
+- Allow finishing the shape via double-click.
 
 **Non-Goals:**
-- **Complex Gesture Recognition**: We won't support complex shapes like stars or L-shapes in the MVP.
-- **Stroke Width Support**: The line thickness of the sketch will not influence the board thickness.
-- **Editability of the Sketch**: Once a sketch is committed and converted to boards, the original sketch path is discarded.
+- **Bezier Curves**: Only linear segments between control points are supported for the sketch.
+- **Snapping**: While we could snap to the grid, the priority is the "sketch-like" feel of point placement.
 
 ## Decisions
 
-### 1. Classification Algorithm (Heuristic-based)
-We will use a geometric heuristic rather than a machine learning model for the MVP.
-- **Rectangularity**: `Area(Path) / Area(BoundingBox)`. If > 0.8, it's a rectangle.
-- **Circularity**: `Area(Path) / (Perimeter(Path)^2 / (4 * PI))`. If > 0.8, it's a circle.
-- **Rationale**: These heuristics are fast, simple to implement, and sufficient for the constrained environment of a ground-plane footprint.
+### 1. Interaction Model
+- **Click**: Adds a point to the current sketch.
+- **Move**: Shows a "rubber-band" line from the last point to the cursor.
+- **Double-Click / Button Click**: Commits the sketch.
+- **Rationale**: This is a standard CAD interaction pattern that balances speed and precision.
 
-### 2. Resulting Geometry
-- **Rectangle (Enclosure)**: Creates 4 `upright` boards forming a frame around the bounding box.
-- **Circle (Panel)**: Creates 1 `flat` circular board with a radius matching half the average of the bounding box sides.
-- **Rationale**: This matches the "Hollow Frame" mental model where a box sketch implies a volume.
+### 2. Visualization
+We will use a Three.js `Line` with a `BufferGeometry` that updates its vertex data whenever a point is added or the cursor moves.
+- **Closing Segment**: If > 2 points, render a dashed line from the cursor back to the first point to indicate closure.
 
-### 3. Tool State Integration
-A new `pen-sketch` state will be added to the `EditorTool` type.
-- **Interaction**: `onPointerDown` starts recording, `onPointerMove` appends points and updates a live SVG preview, `onPointerUp` triggers classification and commit.
+### 3. Classification Heuristics
+- **Rectangle**: If point count is 4 (or 3-6) and the area matches the bounding box area > 85%.
+- **Circle**: If point count is high (8+) or if the distance from the centroid to all points has low variance.
 
 ## Risks / Trade-offs
 
-- **[Risk] False Positives** → A user might draw a messy circle that is classified as a rectangle. **Mitigation**: Ensure the bounding box preview is visible, and allow the user to Undo (`Cmd+Z`) the generated boards easily.
-- **[Risk] Performance** → High-frequency pointer events could generate a massive number of points. **Mitigation**: Sample points with a minimum distance threshold (e.g., 5mm) to keep the path lean.
+- **[Risk] Unintentional Clicks** → Users might click once and then want to cancel. **Mitigation**: Pressing `Esc` clears the current points.
+- **[Risk] Degenerate Shapes** → Polygons with self-intersecting lines. **Mitigation**: For the MVP, we assume simple convex/concave polygons and use the bounding box for the final board generation.

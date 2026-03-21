@@ -1,18 +1,17 @@
-## 1. Geometry Utilities & Classification
+## 1. Interaction & State
 
-- [x] 1.1 Implement path area calculation in `packages/core/src/geometry.ts`.
-- [x] 1.2 Implement path perimeter calculation in `packages/core/src/geometry.ts`.
-- [x] 1.3 Add `classifySketchPath` function to `apps/web/src/lib/pattern-studio.ts` using rectangularity/circularity heuristics.
+- [x] 1.1 Update `handleSketchStart` and `handleSketchMove` in `EditorPage.tsx` to handle discrete point collection rather than continuous drag.
+- [x] 1.2 Implement a "Finish Sketch" function that triggers `commitSketch`.
+- [x] 1.3 Add a "Commit" button to the editor overlay when points are active.
 
-## 2. Board Generation Logic
+## 2. 3D Preview Updates
 
-- [x] 2.1 Implement `createBoardEnclosureFromBounds` helper in `apps/web/src/lib/pattern-studio.ts` (generates 4 boards + group).
-- [x] 2.2 Implement `createCircularBoardFromBounds` helper in `apps/web/src/lib/pattern-studio.ts`.
-- [x] 2.3 Implement `commitSketch` function that orchestrates classification and board creation.
+- [x] 2.1 Update `SketchPath` in `BoardPreview3D.tsx` to render discrete control point markers (small spheres).
+- [x] 2.2 Implement a "rubber-band" line in `BoardPreview3D` that follows the cursor from the last placed point.
+- [x] 2.3 Add a "close path" segment visualization once 3 points are placed.
 
-## 3. UI & Interaction
+## 3. Refinement & Logic
 
-- [x] 3.1 Update `EditorTool` type and toolbar in `apps/web/src/components/pattern-studio/editor-page.tsx` to include `pen-sketch`.
-- [x] 3.2 Implement `onPointerDown`/`Move`/`Up` handlers for the `pen-sketch` tool in `EditorPage`.
-- [x] 3.3 Add an SVG overlay layer in `EditorPage` to render the live freehand sketch line.
-- [x] 3.4 Verify the end-to-end flow: sketch a rectangle -> 4 walls appear; sketch a circle -> circular board appears.
+- [x] 3.1 Update `classifySketchPath` heuristic to work better with low vertex counts (e.g., exactly 4 points for rectangle).
+- [x] 3.2 Implement double-click handler on the ground plane to finish the sketch.
+- [x] 3.3 Verify end-to-end: click 4 points -> double-click -> enclosure appears.

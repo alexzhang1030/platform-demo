@@ -66,6 +66,7 @@ interface BoardPreview3DProps {
   createBoardModeEnabled?: boolean
   sketchModeEnabled?: boolean
   sketchPoints?: ControlPoint[]
+  hoverPoint?: ControlPoint | null
   document: PatternDocument
   selection: EditorSelectionState
   onBoardEditRequest?: (boardId: string) => void
@@ -117,6 +118,7 @@ interface SceneProps extends BoardPreview3DProps {
   controlsRef: RefObject<ComponentRef<typeof OrbitControls> | null>
   createBoardDraft: CreateBoardDraft | null
   sketchPoints?: ControlPoint[]
+  hoverPoint?: ControlPoint | null
   initialCameraFraming: ReturnType<typeof getCameraFraming>
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
@@ -513,24 +515,52 @@ function JointCandidateBars({ assembly }: JointCandidateBarProps) {
   })
 }
 
-function SketchPath({ points }: { points: ControlPoint[] }) {
+function SketchPath({ points, hoverPoint }: { points: ControlPoint[]; hoverPoint: ControlPoint | null }) {
   const lineGeometry = useMemo(() => {
-    if (points.length < 2) {
+    if (points.length === 0) {
       return null
     }
-    return new THREE.BufferGeometry().setFromPoints(
-      points.map(p => new THREE.Vector3(p.x, -p.y, 2)),
-    )
-  }, [points])
 
-  if (!lineGeometry) {
-    return null
-  }
+    const displayPoints = [...points]
+    if (hoverPoint) {
+      displayPoints.push(hoverPoint)
+    }
+
+    return new THREE.BufferGeometry().setFromPoints(
+      displayPoints.map(p => new THREE.Vector3(p.x, -p.y, 2)),
+    )
+  }, [points, hoverPoint])
+
+  const closingGeometry = useMemo(() => {
+    if (points.length < 3 || !hoverPoint) {
+      return null
+    }
+
+    return new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(hoverPoint.x, -hoverPoint.y, 2),
+      new THREE.Vector3(points[0]!.x, -points[0]!.y, 2),
+    ])
+  }, [points, hoverPoint])
 
   return (
-    <line geometry={lineGeometry}>
-      <lineBasicMaterial color="#60a5fa" linewidth={3} />
-    </line>
+    <group>
+      {lineGeometry && (
+        <line geometry={lineGeometry}>
+          <lineBasicMaterial color="#60a5fa" linewidth={3} />
+        </line>
+      )}
+      {closingGeometry && (
+        <line geometry={closingGeometry}>
+          <lineBasicMaterial color="#60a5fa" dashSize={4} gapSize={4} linewidth={1} transparent opacity={0.5} />
+        </line>
+      )}
+      {points.map((point, index) => (
+        <mesh key={index} position={[point.x, -point.y, 2]}>
+          <sphereGeometry args={[3, 16, 16]} />
+          <meshBasicMaterial color="#60a5fa" />
+        </mesh>
+      ))}
+    </group>
   )
 }
 
@@ -542,6 +572,7 @@ function Scene({
   createBoardModeEnabled = false,
   sketchModeEnabled = false,
   sketchPoints = [],
+  hoverPoint = null,
   document,
   latestDocumentRef,
   onBoardEditRequest,
@@ -870,9 +901,11 @@ function Scene({
         }
       }
 
-      if (sketchModeEnabled && isSketchingRef.current && planePoint) {
+      if (sketchModeEnabled && planePoint) {
         onSketchMove?.({ x: planePoint.x, y: -planePoint.y })
-        return
+        if (isSketchingRef.current) {
+          return
+        }
       }
 
       const heightResizeDraft = heightResizeDraftRef.current
@@ -1276,11 +1309,12 @@ function Scene({
       {isCreateModeActive || sketchModeEnabled
         ? (
           <>
-            <SketchPath points={sketchPoints} />
+            <SketchPath points={sketchPoints} hoverPoint={hoverPoint} />
             <mesh
               position={[0, 0, 0]}
               onPointerDown={sketchModeEnabled ? handleScenePointerDown : handleCreateBoardPointerDown}
               onPointerMove={sketchModeEnabled ? undefined : handleCreateBoardPointerMove}
+              onDoubleClick={sketchModeEnabled ? () => onSketchEnd?.() : undefined}
             >
               <planeGeometry args={[groundPlaneSize, groundPlaneSize]} />
               <meshBasicMaterial opacity={0} transparent />
@@ -1468,6 +1502,7 @@ export function BoardPreview3D({
   createBoardModeEnabled = false,
   sketchModeEnabled = false,
   sketchPoints = [],
+  hoverPoint = null,
   document,
   selection,
   onBoardEditRequest,
@@ -1617,6 +1652,7 @@ export function BoardPreview3D({
             createBoardModeEnabled={createBoardModeEnabled}
             sketchModeEnabled={sketchModeEnabled}
             sketchPoints={sketchPoints}
+            hoverPoint={hoverPoint}
             document={document}
             latestDocumentRef={latestDocumentRef}
             localCreateModeActive={localCreateModeActive}

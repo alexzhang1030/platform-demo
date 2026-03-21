@@ -1,39 +1,29 @@
 ## ADDED Requirements
 
-### Requirement: Freehand Sketch Interaction
-The system SHALL provide a pen tool that allows the user to draw freehand paths on the ground plane in the 3D workspace.
-- The tool SHALL collect a sequence of points during a pointer-down-drag-up gesture.
-- The tool SHALL render a live line preview of the path while drawing.
+### Requirement: Point-based Sketch Interaction
+The system SHALL provide a tool that allows the user to define a shape by clicking points on the ground plane.
+- Each click SHALL add a control point at the pointer's location.
+- The tool SHALL render line segments connecting consecutive control points.
+- The tool SHALL render a "closing" segment from the last point to the first point once 3 or more points exist.
 
-#### Scenario: User draws a freehand path
-- **WHEN** the user activates the pen tool and drags the pointer on the ground plane
-- **THEN** a visible line follows the pointer in 3D space
-- **THEN** the system collects the path points for processing
+#### Scenario: User places control points
+- **WHEN** the user is in Smart Pen mode and clicks the ground plane
+- **THEN** a new control point is added and visible in 3D space
+- **THEN** a line segment connects it to the previous point
 
-### Requirement: Rectangle Gesture Recognition
-The system SHALL interpret a closed, roughly rectangular freehand path as an enclosure request.
-- The recognition SHALL calculate the bounding box of the path.
-- The system SHALL generate four upright boards aligned to the sides of the bounding box.
-- The generated boards SHALL be automatically joined into a new `BoardGroup`.
+### Requirement: Polygon Classification
+Upon committing the shape, the system SHALL classify the resulting polygon.
+- A polygon with 3-6 points that is roughly rectangular SHALL be classified as a **Rectangle**.
+- A polygon with 8+ points that is roughly circular SHALL be classified as a **Circle**.
+- The system SHALL use the bounding box of the points to derive the final dimensions.
 
-#### Scenario: User sketches a rectangle
-- **WHEN** the user sketches a messy rectangular loop and releases the pointer
-- **THEN** the system generates four upright boards forming a hollow frame at that location
-- **THEN** the boards are automatically grouped together
+#### Scenario: Committing a rectangular enclosure
+- **WHEN** the user places 4 points roughly in a square and clicks "Commit"
+- **THEN** the system generates four upright boards forming a hollow frame
 
-### Requirement: Circle Gesture Recognition
-The system SHALL interpret a closed, roughly circular freehand path as a single circular board request.
-- The recognition SHALL calculate the radius and center from the path's bounding box.
-- The system SHALL generate one flat circular board at that location.
+### Requirement: Shape Commitment
+The user SHALL be able to finish and commit the shape via a "Commit" button in the overlay or a double-click on the ground plane.
 
-#### Scenario: User sketches a circle
-- **WHEN** the user sketches a messy circular loop and releases the pointer
-- **THEN** the system generates a single flat circular board matching the sketch's center and radius
-
-### Requirement: Sketch Tool Activation
-The system SHALL allow activating the pen sketch tool via a new "Pen" action in the editor toolbar.
-
-#### Scenario: User selects the pen tool
-- **WHEN** the user clicks the pen icon in the toolbar
-- **THEN** the editor enters the `pen-sketch` tool state
-- **THEN** normal selection and dragging are disabled while sketching
+#### Scenario: User double-clicks to finish
+- **WHEN** the user double-clicks the ground plane after placing points
+- **THEN** the system closes the polygon, classifies it, and generates the boards

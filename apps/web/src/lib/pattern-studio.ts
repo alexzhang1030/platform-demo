@@ -875,8 +875,13 @@ export function replacePointAt(
 export type SketchClassification = 'circle' | 'rectangle' | 'unknown'
 
 export function classifySketchPath(points: ControlPoint[]): SketchClassification {
-  if (points.length < 5) {
+  if (points.length < 3) {
     return 'unknown'
+  }
+
+  // Exactly 4 points is almost certainly a rectangle enclosure request
+  if (points.length === 4) {
+    return 'rectangle'
   }
 
   const area = calculatePathArea(points)
@@ -891,17 +896,12 @@ export function classifySketchPath(points: ControlPoint[]): SketchClassification
   const rectangularity = area / boundsArea
   const circularity = (4 * Math.PI * area) / (perimeter * perimeter)
 
-  // Relaxed thresholds for messy human sketches
-  if (circularity > 0.5) {
+  // For low point counts, circularity is less reliable
+  if (points.length >= 8 && circularity > 0.6) {
     return 'circle'
   }
 
-  if (rectangularity > 0.6) {
-    return 'rectangle'
-  }
-
-  // Fallback: if it's a reasonably large closed loop but messy, assume rectangle enclosure
-  if (area > 1000 && points.length > 10) {
+  if (rectangularity > 0.7) {
     return 'rectangle'
   }
 

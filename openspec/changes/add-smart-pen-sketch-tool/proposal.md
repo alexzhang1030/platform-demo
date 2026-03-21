@@ -1,26 +1,27 @@
 ## Why
 
-Building 3D models from scratch currently requires a high degree of precision and multiple clicks. A freehand sketching tool will allow users to quickly "doodle" a footprint and have the system automatically interpret and convert it into precise 3D boards, significantly speeding up the prototyping phase.
+Freehand drawing can be imprecise and difficult to control in a 3D workspace. Introducing a "Control Point" workflow allows users to click to define precise vertices of a shape. This data can then be used to accurately generate circular panels or rectangular enclosures, combining the speed of sketching with the precision of point-based placement.
 
 ## What Changes
 
-- **Pen Sketch Tool**: A new tool in the 3D workspace that allows freehand drawing on the ground plane.
-- **Gesture Recognition**: An algorithm to classify freehand paths as either a circle or a rectangle.
-- **Smart Conversion**:
-    - **Circle Sketch**: Converts to a single flat circular board.
-    - **Rectangle Sketch**: Converts to four upright boards forming a hollow enclosure.
-- **UI Tool Selection**: Add a "Pen" icon to the editor toolbar.
+- **Smart Pen (Point-based)**: Instead of freehand drag, the tool now collects points on each click.
+- **Visual Feedback**: Real-time line segments connecting the control points during placement.
+- **Classification & Commit**:
+    - A "Commit" button or double-click finishes the shape.
+    - If the points roughly form a circle, generate one flat circular board.
+    - If the points roughly form a rectangle, generate four upright boards (enclosure).
+- **Toolbar Update**: Rename "Smart Pen" to "Smart Polygon" or keep "Smart Pen" but update the interaction model.
 
 ## Capabilities
 
 ### New Capabilities
-- `pattern-studio-pen-sketch`: High-level capability for freehand shape recognition and conversion to board primitives.
+- `pattern-studio-pen-sketch`: Capability for point-based shape recognition and conversion to board primitives.
 
 ### Modified Capabilities
 None.
 
 ## Impact
 
-- `apps/web/src/components/pattern-studio/editor-page.tsx`: New tool state and freehand event handling.
-- `apps/web/src/lib/pattern-studio.ts`: New `commitSketch` logic and primitive detection algorithms.
-- `packages/core/src/`: Potential new geometry utilities for shape fitting.
+- `apps/web/src/components/pattern-studio/editor-page.tsx`: Updated pointer logic to collect discrete points.
+- `apps/web/src/lib/pattern-studio.ts`: Logic to handle a list of vertices and classify the resulting polygon.
+- `apps/web/src/components/pattern-studio/board-preview-3d.tsx`: Render discrete control point markers and segments.

@@ -418,6 +418,7 @@ export function EditorPage({
   const nestingResult = useMemo(() => buildNestingLayout(document), [document])
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [sketchPoints, setSketchPoints] = useState<ControlPoint[]>([])
+  const [hoverPoint, setHoverPoint] = useState<ControlPoint | null>(null)
   const [isInsetDragging, setIsInsetDragging] = useState(false)
   const [pipLayout, setPipLayout] = useState<PipLayoutState>({
     level: 'compact',
@@ -607,23 +608,17 @@ export function EditorPage({
   }
 
   const handleSketchStart = (point: ControlPoint) => {
-    setSketchPoints([point])
+    setSketchPoints(current => [...current, point])
   }
 
   const handleSketchMove = (point: ControlPoint) => {
-    setSketchPoints(current => {
-      // Simple distance threshold to keep path lean (5mm)
-      const last = current.at(-1)
-      if (last && Math.hypot(point.x - last.x, point.y - last.y) < 5) {
-        return current
-      }
-      return [...current, point]
-    })
+    setHoverPoint(point)
   }
 
-  const handleSketchEnd = () => {
-    if (sketchPoints.length < 5) {
+  const handleFinishSketch = () => {
+    if (sketchPoints.length < 3) {
       setSketchPoints([])
+      setHoverPoint(null)
       return
     }
 
@@ -631,6 +626,12 @@ export function EditorPage({
     onDocumentChange(result.document)
     onSelectionChange(result.selection)
     setSketchPoints([])
+    setHoverPoint(null)
+  }
+
+  const handleCancelSketch = () => {
+    setSketchPoints([])
+    setHoverPoint(null)
   }
 
   function openBoardEditDialog(boardId: string) {
@@ -963,6 +964,7 @@ export function EditorPage({
                       createBoardModeEnabled={isCreateBoardToolActive}
                       sketchModeEnabled={isPenSketchActive}
                       sketchPoints={sketchPoints}
+                      hoverPoint={hoverPoint}
                       document={document}
                       selection={selection}
                       onBoardEditRequest={openBoardEditDialog}
@@ -970,7 +972,7 @@ export function EditorPage({
                       onDocumentChange={onDocumentChange}
                       onSketchStart={handleSketchStart}
                       onSketchMove={handleSketchMove}
-                      onSketchEnd={handleSketchEnd}
+                      onSketchEnd={handleFinishSketch}
                       onActivateCreateBoardMode={() => setActiveTool('create-board')}
                       canvasClassName="h-full min-h-[520px]"
                     />
@@ -1168,9 +1170,30 @@ export function EditorPage({
                   </Button>
                   {isPenSketchActive
                     ? (
-                        <p className="mt-1 text-[10px] text-foreground/55">
-                          Freehand draw on the ground. Closed loops convert to circles (flat) or rectangles (enclosure).
-                        </p>
+                        <div className="mt-1">
+                          <p className="mb-1.5 text-[10px] text-foreground/55">
+                            Click to place control points. Double-click or click Commit to finish.
+                          </p>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-7 flex-1 text-[10px]"
+                              disabled={sketchPoints.length < 3}
+                              onClick={handleFinishSketch}
+                            >
+                              Commit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 flex-1 text-[10px]"
+                              onClick={handleCancelSketch}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
                       )
                     : null}
                 </div>
