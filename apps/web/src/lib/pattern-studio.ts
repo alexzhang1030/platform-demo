@@ -891,11 +891,17 @@ export function classifySketchPath(points: ControlPoint[]): SketchClassification
   const rectangularity = area / boundsArea
   const circularity = (4 * Math.PI * area) / (perimeter * perimeter)
 
-  if (circularity > 0.75) {
+  // Relaxed thresholds for messy human sketches
+  if (circularity > 0.5) {
     return 'circle'
   }
 
-  if (rectangularity > 0.75) {
+  if (rectangularity > 0.6) {
+    return 'rectangle'
+  }
+
+  // Fallback: if it's a reasonably large closed loop but messy, assume rectangle enclosure
+  if (area > 1000 && points.length > 10) {
     return 'rectangle'
   }
 
