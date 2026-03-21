@@ -274,23 +274,16 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
 
   if (!heightA || !heightB || !lengthA || !lengthB) return null
 
-  // Assume walls are roughly same height, use max to be safe
   const zElevation = Math.max(heightA, heightB)
   const roofLength = Math.max(lengthA, lengthB)
   
   // Span is the distance between the two walls
   const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
   
-  // Account for board thickness if they are anchored center-to-center
-  // If we want the roof panels to meet exactly, and they start at the centers of walls
-  // with thickness T, the actual gap between inner faces is span - thickness.
-  // For MVP, we use center-to-center span.
-  
   const pitchDeg = 45
   const pitchRad = (pitchDeg * Math.PI) / 180
   
   // Width of each roof panel so they meet in the middle
-  // L = (Span/2) / cos(Pitch)
   const roofPanelWidth = (span / 2) / Math.cos(pitchRad)
 
   // One panel will point inward based on the group centroid

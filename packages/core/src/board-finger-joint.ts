@@ -128,18 +128,22 @@ function buildFingerEdgePoints(
 
     if (horizontal) {
       if (isTab) {
+        // Tab depth extends along Y axis
         points.push({ x: offset, y: xBase + tabDir * depth })
         points.push({ x: nextOffset, y: xBase + tabDir * depth })
       } else {
+        // Socket stays on baseline
         points.push({ x: offset, y: xBase })
         points.push({ x: nextOffset, y: xBase })
       }
     }
     else {
       if (isTab) {
+        // Tab depth extends along X axis
         points.push({ x: xBase + tabDir * depth, y: offset })
         points.push({ x: xBase + tabDir * depth, y: nextOffset })
       } else {
+        // Socket stays on baseline
         points.push({ x: xBase, y: offset })
         points.push({ x: xBase, y: nextOffset })
       }
@@ -299,9 +303,9 @@ export function getBoardOutlineWithJoints(
       continue
     }
 
-    const depth = angle === 'L-joint'
-      ? otherBoard.thickness
-      : Math.min(board.thickness, length * 0.25)
+    // Depth should be the thickness of the other board, but strictly orthogonal.
+    // Our buildFingerEdgePoints already handles orthogonality via xBase/yBase.
+    const depth = otherBoard.thickness
 
     const dimension = (myAnchor === 'left' || myAnchor === 'right') ? height : length
     const { fingerCount, fingerWidth } = computeFingerPattern(dimension, board.thickness)
