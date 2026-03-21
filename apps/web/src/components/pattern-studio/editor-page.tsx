@@ -11,6 +11,7 @@ import type { EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
 import {
   buildNestingLayout,
+  getBoardOutlineWithJoints,
   sampleShapePoints,
 } from '@xtool-demo/core'
 import {
@@ -97,8 +98,8 @@ const INSET_MARGIN = 8
 const NESTING_PANEL_PADDING = 40
 const NESTING_SHEET_GAP = 80
 
-function getOutlinePoints(board: Board) {
-  return sampleShapePoints(board.outline)
+function getOutlinePoints(board: Board, groups: PatternDocument['boardGroups'] = [], allBoards: Board[] = []) {
+  return sampleShapePoints(getBoardOutlineWithJoints(board, groups, allBoards))
 }
 
 function getInsetSize(panelWidth: number, level: Exclude<PipLevel, 'fullscreen'>) {
@@ -156,8 +157,8 @@ function offsetPoints(points: ControlPoint[], offsetX: number, offsetY: number) 
   }))
 }
 
-function getBoardPreviewSheet(board: Board): BoardPreviewSheet {
-  const outline = getOutlinePoints(board)
+function getBoardPreviewSheet(board: Board, groups: PatternDocument['boardGroups'] = [], allBoards: Board[] = []): BoardPreviewSheet {
+  const outline = getOutlinePoints(board, groups, allBoards)
   const holes = board.holes.map(hole => sampleShapePoints(hole))
 
   let minX = Number.POSITIVE_INFINITY
@@ -397,8 +398,8 @@ export function EditorPage({
     return totalSheetHeight + totalGapHeight + NESTING_PANEL_PADDING * 2
   }, [nestingResult.sheets])
   const boardPreviewSheet = useMemo(
-    () => selectedBoard ? getBoardPreviewSheet(selectedBoard) : null,
-    [selectedBoard],
+    () => selectedBoard ? getBoardPreviewSheet(selectedBoard, document.boardGroups, document.boards) : null,
+    [selectedBoard, document.boardGroups, document.boards],
   )
   const boardPreviewCanvasWidth = boardPreviewSheet
     ? boardPreviewSheet.width + NESTING_PANEL_PADDING * 2
@@ -795,19 +796,21 @@ export function EditorPage({
                       strokeWidth={placement.boardId === activeBoardId ? 3 : 2}
                     />
                     <text
-                      x={offsetX + placement.x + 12}
-                      y={offsetY + placement.y + 22}
+                      x={offsetX + placement.x + placement.width / 2}
+                      y={offsetY + placement.y + placement.height / 2 - 2}
                       fill={resolvedTheme === 'dark' ? '#e2e8f0' : '#1e293b'}
                       fontSize="14"
                       fontWeight="600"
+                      textAnchor="middle"
                     >
                       {placement.name}
                     </text>
                     <text
-                      x={offsetX + placement.x + 12}
-                      y={offsetY + placement.y + 40}
+                      x={offsetX + placement.x + placement.width / 2}
+                      y={offsetY + placement.y + placement.height / 2 + 16}
                       fill={resolvedTheme === 'dark' ? '#94a3b8' : '#475569'}
                       fontSize="12"
+                      textAnchor="middle"
                     >
                       {`${Math.round(placement.width)} × ${Math.round(placement.height)} mm`}
                     </text>
@@ -858,6 +861,7 @@ export function EditorPage({
                       onBoardEditRequest={openBoardEditDialog}
                       onSelectionChange={onSelectionChange}
                       onDocumentChange={onDocumentChange}
+                      onActivateCreateBoardMode={() => setActiveTool('create-board')}
                       canvasClassName="h-full min-h-[520px]"
                     />
                   )
