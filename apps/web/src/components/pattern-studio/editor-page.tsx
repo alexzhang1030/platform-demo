@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useTheme } from '@/components/theme-provider'
 import {
+  addGableRoofToGroup,
   createBoardFromPreset,
   evaluateBoardGroupsAfterRemove,
   getUprightBoardHeight,

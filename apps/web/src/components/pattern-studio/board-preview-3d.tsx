@@ -40,6 +40,7 @@ import * as THREE from 'three/webgpu'
 import { useTheme } from '@/components/theme-provider'
 import {
   CREATE_BOARD_GRID_SIZE,
+  addGableRoofToGroup,
   commitBoxelAtColumn,
   evaluateBoardGroupsAfterAdd,
   getAssemblyJointCandidates,
@@ -1586,6 +1587,16 @@ export function BoardPreview3D({
     onDocumentChange(updateDocumentTimestamp(nextDocument))
   }
 
+  function handleAddGableRoof() {
+    if (!activeGroupId) return
+
+    const result = addGableRoofToGroup(latestDocumentRef.current, activeGroupId)
+    if (result) {
+      onDocumentChange(result.document)
+      onSelectionChange(result.selection)
+    }
+  }
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
@@ -1750,14 +1761,24 @@ export function BoardPreview3D({
       <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center gap-2">
         {activeGroupId
           ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="pointer-events-auto h-8 border-border/70 bg-background/80 px-3 text-[11px] shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-md"
-              onClick={handleUngroup}
-            >
-              Ungroup
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-events-auto h-8 border-border/70 bg-background/80 px-3 text-[11px] shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-md"
+                onClick={handleAddGableRoof}
+              >
+                Add Gable Roof
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-events-auto h-8 border-border/70 bg-background/80 px-3 text-[11px] shadow-[0_12px_30px_rgba(0,0,0,0.12)] backdrop-blur-md"
+                onClick={handleUngroup}
+              >
+                Ungroup
+              </Button>
+            </>
           )
           : null}
         <Button

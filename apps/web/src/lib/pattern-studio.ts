@@ -223,6 +223,143 @@ export function commitStandingBoardFromSpan(
   return buildStandingBoard(span)
 }
 
+function findParallelWallPair(boards: Board[]): [Board, Board] | null {
+  const uprights = boards.filter(b => b.transform.orientation === 'upright')
+  if (uprights.length < 2) return null
+
+  // Group by rotation (normalized to 0 or 90)
+  const rotationGroups = new Map<number, Board[]>()
+  for (const board of uprights) {
+    const r = Math.abs(board.transform.rotation) % 180
+    const normalized = r > 135 ? 0 : r > 45 && r < 135 ? 90 : 0
+    const group = rotationGroups.get(normalized) || []
+    group.push(board)
+    rotationGroups.set(normalized, group)
+  }
+
+  let bestPair: [Board, Board] | null = null
+  let maxSpan = 0
+
+  // Find the pair with the largest distance between them
+  for (const [_, groupBoards] of rotationGroups.entries()) {
+    for (let i = 0; i < groupBoards.length; i++) {
+      for (let j = i + 1; j < groupBoards.length; j++) {
+        const a = groupBoards[i]!
+        const b = groupBoards[j]!
+        const span = Math.hypot(a.transform.x - b.transform.x, a.transform.y - b.transform.y)
+        if (span > maxSpan) {
+          maxSpan = span
+          bestPair = [a, b]
+        }
+      }
+    }
+  }
+
+  return bestPair
+}
+
+export function addGableRoofToGroup(document: PatternDocument, groupId: string): { document: PatternDocument; selection: EditorSelectionState } | null {
+  const group = document.boardGroups.find(g => g.id === groupId)
+  if (!group) return null
+
+  const groupBoards = document.boards.filter(b => group.boardIds.includes(b.id))
+  const wallPair = findParallelWallPair(groupBoards)
+  if (!wallPair) return null
+
+  const [wallA, wallB] = wallPair
+  const heightA = getUprightBoardHeight(wallA)
+  const heightB = getUprightBoardHeight(wallB)
+  const lengthA = getUprightBoardLength(wallA)
+  const lengthB = getUprightBoardLength(wallB)
+
+  if (!heightA || !heightB || !lengthA || !lengthB) return null
+
+  // Assume walls are roughly same height, use max to be safe
+  const zElevation = Math.max(heightA, heightB)
+  const roofLength = Math.max(lengthA, lengthB)
+  
+  // Span is the distance between the two walls
+  const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
+  const pitchDeg = 45
+  const pitchRad = (pitchDeg * Math.PI) / 180
+  
+  // Width of each roof panel so they meet in the middle
+  const roofPanelWidth = (span / 2) / Math.cos(pitchRad)
+
+  // We need to orient them so they tilt towards each other.
+  // We'll use the walls' transforms as a base.
+  const roofA: Board = {
+    id: getRandomId('board'),
+    name: 'Roof panel A',
+    thickness: wallA.thickness,
+    material: wallA.material,
+    transform: {
+      x: wallA.transform.x,
+      y: wallA.transform.y,
+      rotation: wallA.transform.rotation,
+      orientation: 'hinged',
+      pitch: pitchDeg,
+      z: zElevation,
+      flipPitch: false, // Default inward
+    },
+    outline: createRectangleShape(roofLength, roofPanelWidth),
+    holes: [],
+  }
+
+  const roofB: Board = {
+    id: getRandomId('board'),
+    name: 'Roof panel B',
+    thickness: wallB.thickness,
+    material: wallB.material,
+    transform: {
+      x: wallB.transform.x,
+      y: wallB.transform.y,
+      rotation: wallB.transform.rotation,
+      orientation: 'hinged',
+      pitch: pitchDeg,
+      z: zElevation,
+      flipPitch: false, // Default inward
+    },
+    outline: createRectangleShape(roofLength, roofPanelWidth),
+    holes: [],
+  }
+
+  // Use the same dot-product logic as hingeExtrudeBoard to ensure they point inward
+  const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }
+  
+  const checkFlip = (board: Board) => {
+    const toCentroid = { x: centroid.x - board.transform.x, y: centroid.y - board.transform.y }
+    const rad = (board.transform.rotation * Math.PI) / 180
+    const normal = { x: -Math.sin(rad), y: Math.cos(rad) }
+    const dot = toCentroid.x * normal.x + toCentroid.y * normal.y
+    return dot < 0
+  }
+
+  roofA.transform.flipPitch = checkFlip(roofA)
+  roofB.transform.flipPitch = checkFlip(roofB)
+
+  const updatedGroup = {
+    ...group,
+    boardIds: [...group.boardIds, roofA.id, roofB.id],
+  }
+
+  const nextDocument = updateDocumentTimestamp({
+    ...document,
+    boards: [...document.boards, roofA, roofB],
+    boardGroups: document.boardGroups.map(g => g.id === groupId ? updatedGroup : g),
+  })
+
+  return {
+    document: nextDocument,
+    selection: {
+      activeAssemblyId: '',
+      activeBoardId: roofA.id,
+      selectedAssemblyIds: [],
+      selectedBoardIds: [roofA.id, roofB.id],
+    },
+  }
+}
+
 export function hingeExtrudeBoard(parentBoard: Board, document?: PatternDocument): Board | null {
   const height = getUprightBoardHeight(parentBoard)
   const length = getUprightBoardLength(parentBoard)
