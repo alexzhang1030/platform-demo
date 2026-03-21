@@ -191,7 +191,13 @@ function findPlacementCandidate(
 
       const x = shelf.widthUsed
       const y = shelf.y
-      const nextHeight = Math.max(shelf.height, footprintHeight)
+      const isLastShelf = shelfIndex === sheet.shelves.length - 1
+      const nextHeight = isLastShelf ? Math.max(shelf.height, footprintHeight) : shelf.height
+
+      if (footprintHeight > nextHeight) {
+        continue
+      }
+
       const fitsWidth = x + footprintWidth <= usableWidth
       const fitsHeight = y + nextHeight <= usableHeight
 
@@ -317,8 +323,8 @@ function getTrimmedSheetSize(
   }
 
   return {
-    height: Math.min(sheet.height, maxBottom + edgePadding),
-    width: Math.min(sheet.width, maxRight + edgePadding),
+    height: Math.ceil(Math.min(sheet.height, maxBottom + edgePadding)),
+    width: Math.ceil(Math.min(sheet.width, maxRight + edgePadding)),
   }
 }
 

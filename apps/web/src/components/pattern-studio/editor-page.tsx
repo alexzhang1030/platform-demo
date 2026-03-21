@@ -858,7 +858,7 @@ export function EditorPage({
                 fontSize="18"
                 fontWeight="600"
               >
-                {`Sheet ${sheet.index + 1} · ${sheet.width} × ${sheet.height} mm`}
+                {`Sheet ${sheet.index + 1} · ${formatMillimeters(sheet.width)} × ${formatMillimeters(sheet.height)}`}
               </text>
               {sheet.placements.map((placement) => {
                 const placementOutline = offsetPoints(placement.outline, offsetX + placement.x, offsetY + placement.y)
