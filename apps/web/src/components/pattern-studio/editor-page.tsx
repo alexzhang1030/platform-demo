@@ -27,8 +27,10 @@ import { useTheme } from '@/components/theme-provider'
 import {
   createBoardFromPreset,
   mapBoardColor,
+  selectSingleAssembly,
   PRESET_OPTIONS,
   selectSingleBoard,
+  toggleAssemblySelection,
   toggleBoardSelection,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
@@ -71,7 +73,7 @@ interface InsetOffset {
 }
 
 type PipLevel = 'compact' | 'expanded' | 'fullscreen'
-type EditorTool = 'create-board' | 'select'
+type EditorTool = 'boxel-mode' | 'boxel-remove' | 'create-board' | 'select'
 
 interface PipLayoutState {
   level: PipLevel
@@ -338,8 +340,11 @@ export function EditorPage({
   onExportJson,
 }: EditorPageProps) {
   const { resolvedTheme } = useTheme()
+  const selectedAssemblyIds = selection.selectedAssemblyIds
   const selectedBoardIds = selection.selectedBoardIds
+  const activeAssemblyId = selection.activeAssemblyId
   const activeBoardId = selection.activeBoardId
+  const selectedAssembly = document.assemblies.find(assembly => assembly.id === activeAssemblyId)
   const selectedBoard = document.boards.find(board => board.id === activeBoardId)
   const nestingResult = useMemo(() => buildNestingLayout(document), [document])
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
@@ -357,6 +362,8 @@ export function EditorPage({
 
   const pipLevel = pipLayout.level
   const isPipFullscreen = pipLevel === 'fullscreen'
+  const isBoxelModeActive = activeTool === 'boxel-mode'
+  const isBoxelRemoveModeActive = activeTool === 'boxel-remove'
   const isCreateBoardToolActive = activeTool === 'create-board'
   const nestingSheets = useMemo(
     () =>
@@ -468,29 +475,47 @@ export function EditorPage({
     onSelectionChange(selectSingleBoard(nextBoard.id))
   }
 
-  function removeSelectedBoard() {
-    if (document.boards.length <= 1 || selectedBoardIds.length === 0) {
+  function removeSelectedContent() {
+    if (selectedBoardIds.length === 0 && selectedAssemblyIds.length === 0) {
       return
     }
 
     const selectedBoardIdSet = new Set(selectedBoardIds)
-    if (selectedBoardIdSet.size >= document.boards.length) {
+    const selectedAssemblyIdSet = new Set(selectedAssemblyIds)
+    if (
+      selectedBoardIdSet.size >= document.boards.length
+      && selectedAssemblyIdSet.size >= document.assemblies.length
+      && (document.boards.length > 0 || document.assemblies.length > 0)
+    ) {
       return
     }
 
     const filteredBoards = document.boards.filter(
       board => !selectedBoardIdSet.has(board.id),
     )
+    const filteredAssemblies = document.assemblies.filter(
+      assembly => !selectedAssemblyIdSet.has(assembly.id),
+    )
     const nextDocument = updateDocumentTimestamp({
       ...document,
+      assemblies: filteredAssemblies,
       boards: filteredBoards,
     })
     onDocumentChange(nextDocument)
 
+    const nextActiveAssembly = filteredAssemblies[0]
+    if (nextActiveAssembly) {
+      onSelectionChange(selectSingleAssembly(nextActiveAssembly.id))
+      return
+    }
+
     const nextActiveBoard = filteredBoards[0]
     if (nextActiveBoard) {
       onSelectionChange(selectSingleBoard(nextActiveBoard.id))
+      return
     }
+
+    onSelectionChange(selectSingleBoard(''))
 
     if (filteredBoards.length === 0) {
       setIsBoardEditDialogOpen(false)
@@ -820,6 +845,8 @@ export function EditorPage({
               {!isPipFullscreen
                 ? (
                     <BoardPreview3D
+                      boxelModeEnabled={isBoxelModeActive}
+                      boxelRemoveModeEnabled={isBoxelRemoveModeActive}
                       createBoardModeEnabled={isCreateBoardToolActive}
                       document={document}
                       selection={selection}
@@ -851,7 +878,7 @@ export function EditorPage({
               <SectionHeader
                 eyebrow="Boards"
                 title="Pattern"
-                meta={`${document.boards.length} boards`}
+                meta={`${document.boards.length} boards · ${document.assemblies.length} assemblies`}
               />
               <div className="mt-1.5 max-h-[min(34vh,360px)] space-y-1 overflow-auto pr-0.5 lg:max-h-[min(52vh,560px)]">
                 {document.boards.map((board, index) => {
@@ -891,18 +918,101 @@ export function EditorPage({
                     </button>
                   )
                 })}
+                {document.assemblies.map((assembly, index) => {
+                  const active = assembly.id === activeAssemblyId
+                  const selected = selectedAssemblyIds.includes(assembly.id)
+                  return (
+                    <button
+                      type="button"
+                      key={assembly.id}
+                      className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
+                        ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                        : selected
+                          ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
+                          : 'border-border bg-card hover:bg-muted/45'
+                      }`}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey) {
+                          onSelectionChange(toggleAssemblySelection(selection, assembly.id))
+                          return
+                        }
+
+                        onSelectionChange(selectSingleAssembly(assembly.id))
+                      }}
+                    >
+                      <span
+                        className="mt-1 block size-2 shrink-0"
+                        style={{ backgroundColor: mapBoardColor(index + document.boards.length) }}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
+                          {assembly.name}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-foreground/55">
+                          {`${assembly.cells.length} boxels`}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
 
               <div className="mt-1.5 border-t border-border pt-1.5">
                 <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
-                  Add board
+                  Add content
                 </p>
                 <div className="mt-1.5">
                   <Button
+                    variant={isBoxelModeActive ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 w-full px-2 text-[11px]"
+                    onClick={() => {
+                      setActiveTool(current => {
+                        if (current === 'boxel-mode') {
+                          return 'select'
+                        }
+
+                        return 'boxel-mode'
+                      })
+                    }}
+                  >
+                    {isBoxelModeActive ? 'Exit boxel mode' : 'Boxel mode'}
+                  </Button>
+                  {isBoxelModeActive
+                    ? (
+                        <p className="mt-1 text-[10px] text-foreground/55">
+                          Create in 3D. Click an empty grid column to start a stack, click neighboring columns to merge laterally, and click the same column again to stack upward.
+                        </p>
+                      )
+                    : null}
+                  <Button
+                    variant={isBoxelRemoveModeActive ? 'default' : 'outline'}
+                    size="sm"
+                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                    onClick={() => {
+                      setActiveTool(current => {
+                        if (current === 'boxel-remove') {
+                          return 'select'
+                        }
+
+                        return 'boxel-remove'
+                      })
+                    }}
+                  >
+                    {isBoxelRemoveModeActive ? 'Exit remove boxel' : 'Remove boxel'}
+                  </Button>
+                  {isBoxelRemoveModeActive
+                    ? (
+                        <p className="mt-1 text-[10px] text-foreground/55">
+                          Remove in 3D. Click one boxel inside an assembly to remove it. Disconnected remnants split into separate assemblies automatically.
+                        </p>
+                      )
+                    : null}
+                  <Button
                     variant={isCreateBoardToolActive ? 'default' : 'outline'}
                     size="sm"
-                  className="h-8 w-full px-2 text-[11px]"
-                  onClick={() => {
+                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                    onClick={() => {
                       setActiveTool(current => {
                         if (current === 'create-board') {
                           return 'select'
@@ -939,7 +1049,7 @@ export function EditorPage({
               </div>
 
               <div className="mt-1.5 flex gap-1">
-                <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedBoard}>
+                <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedContent}>
                   Remove
                 </Button>
                 <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onExportJson}>
@@ -952,11 +1062,19 @@ export function EditorPage({
             <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,280px)] lg:w-[280px]">
               <SectionHeader
                 eyebrow="Inspector"
-                title={selectedBoard?.name ?? 'Board'}
+                title={selectedBoard?.name ?? selectedAssembly?.name ?? 'Selection'}
               />
 
               <div className="max-h-[min(34vh,360px)] lg:max-h-[min(58vh,620px)]">
-                <BoardEditorContent board={selectedBoard ?? null} onBoardChange={updateBoard} />
+                {selectedBoard
+                  ? <BoardEditorContent board={selectedBoard} onBoardChange={updateBoard} />
+                  : (
+                      <div className="border border-border bg-card px-3 py-3 text-[12px] text-foreground/60">
+                        {selectedAssembly
+                          ? `${selectedAssembly.cells.length} boxels in one connected assembly. Face-to-face X/Y contacts are marked as joint candidates and single-boxel removal can split the structure.`
+                          : 'Select a board or boxel assembly to inspect it.'}
+                      </div>
+                    )}
               </div>
             </OverlayPanel>
           </div>

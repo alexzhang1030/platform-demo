@@ -4,7 +4,9 @@ import type {
   Path2DShape,
   PatternDocument,
 } from '@xtool-demo/protocol'
+import { buildBoxelAssemblyBounds } from './boxel'
 
+export * from './boxel'
 export * from './nesting'
 export * from './upright-board'
 
@@ -175,6 +177,22 @@ export function getBoundsFromPoints(points: ControlPoint[]): Bounds {
 
 export function getDocumentBounds(document: PatternDocument): Bounds {
   const points = document.boards.flatMap(board => transformBoardPoints(board))
+
+  for (const assembly of document.assemblies) {
+    const bounds = buildBoxelAssemblyBounds(assembly)
+
+    if (bounds.width === 0 && bounds.height === 0 && bounds.depth === 0) {
+      continue
+    }
+
+    points.push(
+      { x: bounds.minX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.maxY },
+      { x: bounds.minX, y: bounds.maxY },
+    )
+  }
+
   return getBoundsFromPoints(points)
 }
 

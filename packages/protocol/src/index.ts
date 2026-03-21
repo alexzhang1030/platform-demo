@@ -12,6 +12,12 @@ export interface ControlPoint {
   y: number
 }
 
+export interface BoxelCell {
+  x: number
+  y: number
+  z: number
+}
+
 export interface PathSegment {
   kind: 'line' | 'quadratic' | 'cubic'
   points: ControlPoint[]
@@ -39,15 +45,30 @@ export interface Board {
   holes: Path2DShape[]
 }
 
+export interface BoxelAssembly {
+  id: string
+  name: string
+  cellSize: number
+  origin: ControlPoint
+  cells: BoxelCell[]
+}
+
 export interface PatternDocument {
   version: '1.0'
   metadata: PatternMetadata
   boards: Board[]
+  assemblies: BoxelAssembly[]
 }
 
 const pointSchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
+})
+
+const boxelCellSchema = z.object({
+  x: z.number().int(),
+  y: z.number().int(),
+  z: z.number().int(),
 })
 
 const pathSegmentSchema = z.object({
@@ -77,6 +98,14 @@ const boardSchema = z.object({
   holes: z.array(path2DShapeSchema),
 })
 
+const boxelAssemblySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cellSize: z.number().positive(),
+  origin: pointSchema,
+  cells: z.array(boxelCellSchema),
+})
+
 export const patternDocumentSchema = z.object({
   version: z.literal('1.0'),
   metadata: z.object({
@@ -86,6 +115,7 @@ export const patternDocumentSchema = z.object({
     updatedAt: z.string().min(1),
   }),
   boards: z.array(boardSchema),
+  assemblies: z.array(boxelAssemblySchema).default([]),
 })
 
 export interface PatternParseResult {
@@ -205,6 +235,7 @@ export function createDefaultPatternDocument(): PatternDocument {
       updatedAt: timestamp,
     },
     boards: [],
+    assemblies: [],
   }
 }
 

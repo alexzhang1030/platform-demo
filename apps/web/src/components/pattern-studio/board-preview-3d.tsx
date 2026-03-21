@@ -1,5 +1,10 @@
 import type { ThreeEvent } from '@react-three/fiber'
-import type { Board, ControlPoint, PatternDocument } from '@xtool-demo/protocol'
+import type {
+  Board,
+  BoxelAssembly,
+  ControlPoint,
+  PatternDocument,
+} from '@xtool-demo/protocol'
 import type { ComponentRef, RefObject } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
@@ -9,6 +14,9 @@ import {
 } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import {
+  buildBoxelAssemblyBounds,
+  getBoxelCellWorldPosition,
+  getBoxelColumnHeight,
   getBoardGroundFootprint,
   getUprightBoardHeight,
   sampleShapePoints,
@@ -19,6 +27,8 @@ import * as THREE from 'three/webgpu'
 import { useTheme } from '@/components/theme-provider'
 import {
   CREATE_BOARD_GRID_SIZE,
+  commitBoxelAtColumn,
+  getAssemblyJointCandidates,
   applyBoardMoveConnection,
   buildBoardMoveConnectionPreview,
   commitStandingBoardFromSpan,
@@ -26,8 +36,11 @@ import {
   findBoardMoveConnection,
   moveBoardsByDelta,
   restoreBoardGeometry,
+  removeBoxelFromAssembly,
+  selectSingleAssembly,
   selectSingleBoard,
   snapshotBoardGeometry,
+  toggleAssemblySelection,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
 import { clamp } from '@/lib/utils'
@@ -36,6 +49,8 @@ import { SelectionOutline } from './selection-outline'
 import { WebGPUGrid } from './webgpu-grid'
 
 interface BoardPreview3DProps {
+  boxelModeEnabled?: boolean
+  boxelRemoveModeEnabled?: boolean
   createBoardModeEnabled?: boolean
   document: PatternDocument
   selection: EditorSelectionState
@@ -55,7 +70,30 @@ interface BoardMeshProps {
   preview?: boolean
 }
 
+interface BoxelAssemblyMeshProps {
+  assembly: BoxelAssembly
+  candidateOnly?: boolean
+  onMeshChange: (assemblyId: string, object: THREE.Object3D | null) => void
+  onCellPointerDown?: (
+    event: ThreeEvent<PointerEvent>,
+    assembly: BoxelAssembly,
+    cell: {
+      x: number
+      y: number
+      z: number
+    },
+  ) => void
+  onPointerDown?: (event: ThreeEvent<PointerEvent>, assembly: BoxelAssembly) => void
+  previewCell?: {
+    x: number
+    y: number
+    z: number
+  } | null
+  preview?: boolean
+}
+
 interface SceneProps extends BoardPreview3DProps {
+  assemblyObjectsRef: RefObject<Map<string, THREE.Object3D>>
   boardGroupRef: RefObject<Map<string, BoardGroupRecord>>
   boardToGroupRef: RefObject<Map<string, string>>
   controlsRef: RefObject<ComponentRef<typeof OrbitControls> | null>
@@ -108,11 +146,25 @@ interface CreateCursorPosition {
   y: number
 }
 
+interface BoxelPreviewState {
+  assemblyId: string | null
+  column: ControlPoint
+  previewCell: {
+    x: number
+    y: number
+    z: number
+  }
+}
+
 interface DragConnectionPreview {
   boards: Board[]
   lineEnd: CreateCursorPosition
   lineStart: CreateCursorPosition
   point: CreateCursorPosition
+}
+
+interface JointCandidateBarProps {
+  assembly: BoxelAssembly
 }
 
 const MIN_CREATE_BOARD_SPAN = 1
@@ -184,6 +236,15 @@ function getBoardWorkspaceBounds(document: PatternDocument): BoardWorkspaceBound
 
     const uprightHeight = getUprightBoardHeight(board)
     maxZ = Math.max(maxZ, uprightHeight ?? board.thickness)
+  }
+
+  for (const assembly of document.assemblies) {
+    const bounds = buildBoxelAssemblyBounds(assembly)
+    minX = Math.min(minX, bounds.minX)
+    maxX = Math.max(maxX, bounds.maxX)
+    minY = Math.min(minY, bounds.minY)
+    maxY = Math.max(maxY, bounds.maxY)
+    maxZ = Math.max(maxZ, bounds.maxZ)
   }
 
   if (
@@ -336,9 +397,84 @@ function BoardMesh({
   )
 }
 
+function BoxelAssemblyMesh({
+  assembly,
+  candidateOnly = false,
+  onMeshChange,
+  onCellPointerDown,
+  onPointerDown,
+  preview = false,
+  previewCell = null,
+}: BoxelAssemblyMeshProps) {
+  const cells = previewCell ? [...assembly.cells, previewCell] : assembly.cells
+
+  return (
+    <group
+      ref={(object) => {
+        onMeshChange(assembly.id, object)
+      }}
+      onPointerDown={onPointerDown ? event => onPointerDown(event, assembly) : undefined}
+    >
+      {cells.map((cell) => {
+        const position = getBoxelCellWorldPosition(assembly, cell)
+
+        return (
+          <mesh
+            key={`${assembly.id}-${cell.x}-${cell.y}-${cell.z}${previewCell === cell ? '-preview' : ''}`}
+            castShadow={!preview}
+            receiveShadow={!preview}
+            position={[position.x, -position.y, position.z]}
+            onPointerDown={onCellPointerDown ? event => onCellPointerDown(event, assembly, cell) : undefined}
+          >
+            <boxGeometry args={[assembly.cellSize, assembly.cellSize, assembly.cellSize]} />
+            <meshStandardMaterial
+              color={candidateOnly ? '#22c55e' : preview ? '#7dd3fc' : '#9f8e7b'}
+              depthWrite={!preview}
+              emissive={candidateOnly ? '#16a34a' : preview ? '#38bdf8' : '#000000'}
+              emissiveIntensity={candidateOnly ? 0.28 : preview ? 0.16 : 0}
+              metalness={0.03}
+              opacity={preview ? 0.45 : 1}
+              roughness={preview ? 0.58 : 0.86}
+              transparent={preview}
+            />
+          </mesh>
+        )
+      })}
+    </group>
+  )
+}
+
+function JointCandidateBars({ assembly }: JointCandidateBarProps) {
+  const candidates = getAssemblyJointCandidates(assembly)
+
+  return candidates.map((candidate, index) => {
+    const from = getBoxelCellWorldPosition(assembly, candidate.from)
+    const to = getBoxelCellWorldPosition(assembly, candidate.to)
+    const midX = (from.x + to.x) / 2
+    const midY = (from.y + to.y) / 2
+    const midZ = (from.z + to.z) / 2
+    const length = Math.hypot(to.x - from.x, to.y - from.y)
+    const angle = Math.atan2(-(to.y - from.y), to.x - from.x)
+
+    return (
+      <mesh
+        key={`${assembly.id}-joint-${index}`}
+        position={[midX, -midY, midZ]}
+        rotation={[0, 0, angle]}
+      >
+        <boxGeometry args={[Math.max(12, length - assembly.cellSize * 0.55), 4, 4]} />
+        <meshBasicMaterial color="#22c55e" transparent opacity={0.85} />
+      </mesh>
+    )
+  })
+}
+
 function Scene({
+  assemblyObjectsRef,
   boardGroupRef,
   boardToGroupRef,
+  boxelModeEnabled = false,
+  boxelRemoveModeEnabled = false,
   createBoardDraft,
   createBoardModeEnabled = false,
   document,
@@ -365,11 +501,14 @@ function Scene({
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
+  const [boxelPreview, setBoxelPreview] = useState<BoxelPreviewState | null>(null)
   const [createCursorPosition, setCreateCursorPosition] = useState<CreateCursorPosition>({
     x: 0,
     y: 0,
   })
   const [dragConnectionPreview, setDragConnectionPreview] = useState<DragConnectionPreview | null>(null)
+  const isBoxelEditModeActive = boxelModeEnabled || boxelRemoveModeEnabled
+  const isCreateModeActive = createBoardModeEnabled || isBoxelEditModeActive
   const workspaceBounds = useMemo(() => getBoardWorkspaceBounds(document), [document])
   const groundPlaneSize = Math.max(workspaceBounds.maxDimension * 6, 2400)
   const createPreviewBoards = useMemo(() => {
@@ -393,6 +532,36 @@ function Scene({
       }),
     ]
   }, [createBoardDraft])
+  const previewAssembly = useMemo(() => {
+    if (!boxelPreview) {
+      return null
+    }
+
+    const existingAssembly = boxelPreview.assemblyId
+      ? document.assemblies.find(assembly => assembly.id === boxelPreview.assemblyId) ?? null
+      : null
+
+    if (existingAssembly) {
+      return {
+        assembly: existingAssembly,
+        previewCell: boxelPreview.previewCell,
+      }
+    }
+
+    return {
+      assembly: {
+        id: 'boxel-preview',
+        name: 'Boxel preview',
+        cellSize: CREATE_BOARD_GRID_SIZE,
+        origin: {
+          x: boxelPreview.column.x,
+          y: boxelPreview.column.y,
+        },
+        cells: [],
+      },
+      previewCell: boxelPreview.previewCell,
+    }
+  }, [boxelPreview, document.assemblies])
 
   const syncCreateCursor = useCallback((point: THREE.Vector3) => {
     if (createCursorSphereRef.current) {
@@ -507,7 +676,14 @@ function Scene({
         selectedObjectsRef.current.push(object)
       }
     }
-  }, [selection.selectedBoardIds])
+
+    for (const assemblyId of selection.selectedAssemblyIds) {
+      const object = assemblyObjectsRef.current.get(assemblyId)
+      if (object) {
+        selectedObjectsRef.current.push(object)
+      }
+    }
+  }, [assemblyObjectsRef, selection.selectedAssemblyIds, selection.selectedBoardIds])
 
   useEffect(() => {
     syncSelectedObjects()
@@ -526,6 +702,19 @@ function Scene({
     [syncSelectedObjects],
   )
 
+  const handleAssemblyMeshChange = useCallback(
+    (assemblyId: string, object: THREE.Object3D | null) => {
+      if (object) {
+        assemblyObjectsRef.current.set(assemblyId, object)
+      } else {
+        assemblyObjectsRef.current.delete(assemblyId)
+      }
+
+      syncSelectedObjects()
+    },
+    [assemblyObjectsRef, syncSelectedObjects],
+  )
+
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
       const rect = gl.domElement.getBoundingClientRect()
@@ -536,7 +725,32 @@ function Scene({
       const planePoint = getPlaneIntersectionFromRay(raycasterRef.current.ray)
       if (planePoint) {
         gridCursorPositionRef.current.set(planePoint.x, planePoint.y)
-        syncCreateCursor(getSnappedCreatePoint(planePoint))
+        const snappedPoint = getSnappedCreatePoint(planePoint)
+        syncCreateCursor(snappedPoint)
+
+        if (boxelModeEnabled) {
+          const matchingAssembly = latestDocumentRef.current.assemblies.find(assembly =>
+            assembly.origin.x === snappedPoint.x && assembly.origin.y === -snappedPoint.y,
+          ) ?? null
+          const nextZ = matchingAssembly
+            ? getBoxelColumnHeight(matchingAssembly, { x: 0, y: 0 })
+            : 0
+
+          setBoxelPreview({
+            assemblyId: matchingAssembly?.id ?? null,
+            column: {
+              x: snappedPoint.x,
+              y: -snappedPoint.y,
+            },
+            previewCell: {
+              x: 0,
+              y: 0,
+              z: nextZ,
+            },
+          })
+        } else if (boxelRemoveModeEnabled) {
+          setBoxelPreview(null)
+        }
       }
 
       const dragState = dragStateRef.current
@@ -622,10 +836,10 @@ function Scene({
       window.removeEventListener('pointermove', handleWindowPointerMove)
       window.removeEventListener('pointerup', handleWindowPointerUp)
     }
-  }, [camera, finishBoardDrag, getBoardGroup, getSnappedCreatePoint, gl, onDocumentChange, syncCreateCursor])
+  }, [boxelModeEnabled, boxelRemoveModeEnabled, camera, finishBoardDrag, getBoardGroup, getSnappedCreatePoint, gl, latestDocumentRef, onDocumentChange, syncCreateCursor])
 
   function handleBoardPointerDown(event: ThreeEvent<PointerEvent>, board: Board) {
-    if (createBoardModeEnabled) {
+    if (isCreateModeActive) {
       return
     }
 
@@ -653,7 +867,9 @@ function Scene({
     const isSelected = selection.selectedBoardIds.includes(board.id)
     const nextSelection = selectedBoardIds.length > 1
       ? {
+          activeAssemblyId: '',
           activeBoardId: board.id,
+          selectedAssemblyIds: [],
           selectedBoardIds,
         }
       : isSelected
@@ -694,7 +910,7 @@ function Scene({
   }
 
   function handleBoardDoubleClick(event: ThreeEvent<MouseEvent>, board: Board) {
-    if (createBoardModeEnabled || isCameraPanModifierPressed || dragMovedRef.current) {
+    if (isCreateModeActive || isCameraPanModifierPressed || dragMovedRef.current) {
       dragMovedRef.current = false
       return
     }
@@ -704,7 +920,7 @@ function Scene({
   }
 
   function handleCreateBoardPointerMove(event: ThreeEvent<PointerEvent>) {
-    if (!createBoardModeEnabled) {
+    if (!isCreateModeActive) {
       return
     }
 
@@ -714,7 +930,7 @@ function Scene({
     syncCreateCursor(nextPoint)
     gridCursorPositionRef.current.set(nextPoint.x, nextPoint.y)
 
-    if (!createBoardDraft) {
+    if (isBoxelEditModeActive || !createBoardDraft) {
       return
     }
 
@@ -725,7 +941,7 @@ function Scene({
   }
 
   function handleCreateBoardPointerDown(event: ThreeEvent<PointerEvent>) {
-    if (!createBoardModeEnabled || isCameraPanModifierPressed) {
+    if (!isCreateModeActive || isCameraPanModifierPressed) {
       return
     }
 
@@ -734,6 +950,21 @@ function Scene({
     const nextPoint = getSnappedCreatePoint(event.point)
     syncCreateCursor(nextPoint)
     gridCursorPositionRef.current.set(nextPoint.x, nextPoint.y)
+
+    if (boxelModeEnabled) {
+      const result = commitBoxelAtColumn(document, {
+        x: nextPoint.x,
+        y: -nextPoint.y,
+      })
+
+      onDocumentChange(result.document)
+      onSelectionChange(result.selection)
+      return
+    }
+
+    if (boxelRemoveModeEnabled) {
+      return
+    }
 
     if (!createBoardDraft) {
       onCreateBoardDraftChange({
@@ -763,13 +994,51 @@ function Scene({
     onCreateBoardDraftChange(null)
   }
 
+  function handleAssemblyPointerDown(event: ThreeEvent<PointerEvent>, assembly: BoxelAssembly) {
+    if (isCreateModeActive || isCameraPanModifierPressed) {
+      return
+    }
+
+    event.stopPropagation()
+
+    if (event.metaKey || event.ctrlKey) {
+      onSelectionChange(toggleAssemblySelection(selection, assembly.id))
+      return
+    }
+
+    onSelectionChange(selectSingleAssembly(assembly.id))
+  }
+
+  function handleAssemblyCellPointerDown(
+    event: ThreeEvent<PointerEvent>,
+    assembly: BoxelAssembly,
+    cell: {
+      x: number
+      y: number
+      z: number
+    },
+  ) {
+    if (!boxelRemoveModeEnabled || isCameraPanModifierPressed) {
+      return
+    }
+
+    event.stopPropagation()
+    const result = removeBoxelFromAssembly(document, assembly.id, cell)
+    if (!result.removed) {
+      return
+    }
+
+    onDocumentChange(result.document)
+    onSelectionChange(result.selection)
+  }
+
   return (
     <>
       <color attach="background" args={[resolvedTheme === 'dark' ? '#0f131a' : '#ddd4c1']} />
       <WebGPUGrid cursorPositionRef={gridCursorPositionRef} resolvedTheme={resolvedTheme} />
       <SelectionOutline selectedObjectsRef={selectedObjectsRef} />
       <PatternStudioLights resolvedTheme={resolvedTheme} />
-      {createBoardModeEnabled
+      {isCreateModeActive
         ? (
           <>
             <mesh
@@ -800,11 +1069,24 @@ function Scene({
           key={board.id}
           board={board}
           onMeshChange={handleMeshChange}
-          onDoubleClick={createBoardModeEnabled ? undefined : handleBoardDoubleClick}
-          onPointerDown={createBoardModeEnabled ? undefined : handleBoardPointerDown}
-          onPointerMove={createBoardModeEnabled ? undefined : handleBoardPointerMove}
-          onPointerUp={createBoardModeEnabled ? undefined : handleBoardPointerUp}
+          onDoubleClick={isCreateModeActive ? undefined : handleBoardDoubleClick}
+          onPointerDown={isCreateModeActive ? undefined : handleBoardPointerDown}
+          onPointerMove={isCreateModeActive ? undefined : handleBoardPointerMove}
+          onPointerUp={isCreateModeActive ? undefined : handleBoardPointerUp}
         />
+      ))}
+      {document.assemblies.map((assembly) => (
+        <group key={assembly.id}>
+          <BoxelAssemblyMesh
+            assembly={assembly}
+            onCellPointerDown={boxelRemoveModeEnabled ? handleAssemblyCellPointerDown : undefined}
+            onMeshChange={handleAssemblyMeshChange}
+            onPointerDown={isCreateModeActive ? undefined : handleAssemblyPointerDown}
+          />
+          {selection.selectedAssemblyIds.includes(assembly.id)
+            ? <JointCandidateBars assembly={assembly} />
+            : null}
+        </group>
       ))}
       {dragConnectionPreview
         ? (
@@ -865,6 +1147,16 @@ function Scene({
           />
         ))
         : null}
+      {boxelModeEnabled && previewAssembly
+        ? (
+          <BoxelAssemblyMesh
+            assembly={previewAssembly.assembly}
+            onMeshChange={() => { }}
+            preview
+            previewCell={previewAssembly.previewCell}
+          />
+        )
+        : null}
       <PerspectiveCamera
         fov={50}
         makeDefault
@@ -892,6 +1184,8 @@ function Scene({
 }
 
 export function BoardPreview3D({
+  boxelModeEnabled = false,
+  boxelRemoveModeEnabled = false,
   createBoardModeEnabled = false,
   document,
   selection,
@@ -902,6 +1196,7 @@ export function BoardPreview3D({
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null)
+  const assemblyObjectsRef = useRef(new Map<string, THREE.Object3D>())
   const boardGroupRef = useRef(new Map<string, BoardGroupRecord>())
   const boardToGroupRef = useRef(new Map<string, string>())
   const latestDocumentRef = useRef(document)
@@ -963,6 +1258,10 @@ export function BoardPreview3D({
       }
 
       if (!createBoardModeEnabled) {
+        if (boxelModeEnabled && event.key === 'Escape') {
+          return
+        }
+
         return
       }
 
@@ -999,7 +1298,7 @@ export function BoardPreview3D({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleWindowBlur)
     }
-  }, [createBoardModeEnabled])
+  }, [boxelModeEnabled, createBoardModeEnabled])
 
   return (
     <div className={wrapperClassName}>
@@ -1032,8 +1331,11 @@ export function BoardPreview3D({
           }}
         >
           <Scene
+            assemblyObjectsRef={assemblyObjectsRef}
             boardGroupRef={boardGroupRef}
             boardToGroupRef={boardToGroupRef}
+            boxelModeEnabled={boxelModeEnabled}
+            boxelRemoveModeEnabled={boxelRemoveModeEnabled}
             createBoardDraft={createBoardDraft}
             createBoardModeEnabled={createBoardModeEnabled}
             document={document}
@@ -1054,7 +1356,25 @@ export function BoardPreview3D({
         </Canvas>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 border border-border/60 bg-background/72 px-2 py-1 text-[10px] font-medium tracking-[0.01em] text-foreground/72 backdrop-blur-md">
-        {createBoardModeEnabled
+        {boxelRemoveModeEnabled
+          ? (
+            <>
+              <span>Click boxel to remove</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Green bars show joint candidates</span>
+            </>
+          )
+          : boxelModeEnabled
+          ? (
+            <>
+              <span>Click to add boxel</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Click same column to stack upward</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Green bars show joint candidates</span>
+            </>
+          )
+          : createBoardModeEnabled
           ? (
             <>
               <span>Click to start</span>

@@ -70,7 +70,7 @@ export function GeneratorPage({
               <SectionHeader
                 eyebrow="Generator"
                 title="Import"
-                meta={`${document.boards.length} boards`}
+                meta={`${document.boards.length} boards · ${document.assemblies.length} assemblies`}
               />
 
               <div className="mt-2 space-y-2">
@@ -115,7 +115,16 @@ export function GeneratorPage({
                   <div className="p-2.5 text-[12px] text-foreground/72">
                     {parseIssues.length === 0
                       ? (
-                          <p>Valid pattern document.</p>
+                          <div className="space-y-1.5">
+                            <p>Valid pattern document.</p>
+                            {document.assemblies.length > 0
+                              ? (
+                                  <p className="text-[11px] text-foreground/55">
+                                    Boxel assemblies are preserved in JSON but are not included in SVG board output yet.
+                                  </p>
+                                )
+                              : null}
+                          </div>
                         )
                       : (
                           <ul className="space-y-1.5 text-[12px] text-destructive">

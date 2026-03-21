@@ -14,6 +14,8 @@
   解释 3D 预览相机如何只做初始 framing、为什么不再跟着 document 自动重算，以及 `Reset camera` 怎么工作。
 - `create-board.md`
   解释 3D create-board 如何生成立板、如何做吸附，以及吸附后为什么会把燕尾榫直接写进 board 几何。
+- `boxel-mode.md`
+  解释 `boxel-mode` 如何把体素堆叠持久化成 `BoxelAssembly`，以及 editor 如何预览、选择和提交这些 stack。
 - `lighting.md`
   解释 3D 预览的三盏方向光和环境光如何工作。
 - `webgpu-grid.md`

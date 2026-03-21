@@ -1,16 +1,23 @@
 import type {
   Board,
+  BoxelAssembly,
+  BoxelCell,
   ControlPoint,
   Path2DShape,
   PatternDocument,
 } from '@xtool-demo/protocol'
 import {
+  appendBoxelCellAboveColumn,
+  buildJointCandidates,
   createDovetailSocket,
   createUprightBoardOutline,
+  findFaceAdjacentAssemblies,
   findClosestUprightBoardMoveSnap,
   getUprightBoardHeight,
   getUprightBoardLength,
+  mergeAssembliesThroughWorldCell,
   normalizeUprightBoardSpan,
+  splitAssemblyIntoConnectedComponents,
 } from '@xtool-demo/core'
 import {
   createCircleShape,
@@ -24,7 +31,9 @@ export type RouteKey = 'editor' | 'generator'
 export type ShapePreset = 'rectangle' | 'rounded-rectangle' | 'circle'
 
 export interface EditorSelectionState {
+  activeAssemblyId: string
   activeBoardId: string
+  selectedAssemblyIds: string[]
   selectedBoardIds: string[]
 }
 
@@ -58,6 +67,18 @@ export interface BoardMoveConnectionPreview {
   point: ControlPoint
 }
 
+export interface BoxelCommitResult {
+  assembly: BoxelAssembly
+  document: PatternDocument
+  selection: EditorSelectionState
+}
+
+export interface BoxelRemoveResult {
+  document: PatternDocument
+  removed: boolean
+  selection: EditorSelectionState
+}
+
 export interface BoardGeometrySnapshot {
   boardId: string
   holes: Path2DShape[]
@@ -74,6 +95,7 @@ export const CREATE_BOARD_GRID_SIZE = 40
 export const CREATE_BOARD_DEFAULT_LENGTH = CREATE_BOARD_GRID_SIZE
 export const CREATE_BOARD_DEFAULT_HEIGHT = 220
 export const CREATE_BOARD_DEFAULT_THICKNESS = 18
+export const BOXEL_DEFAULT_CELL_SIZE = CREATE_BOARD_GRID_SIZE
 
 export function normalizeCreateBoardSpan(
   span: BoardSpan,
@@ -311,7 +333,9 @@ export function getRouteFromPath(pathname: string): RouteKey {
 
 export function createEditorSelection(activeBoardId: string): EditorSelectionState {
   return {
+    activeAssemblyId: '',
     activeBoardId,
+    selectedAssemblyIds: [],
     selectedBoardIds: activeBoardId ? [activeBoardId] : [],
   }
 }
@@ -321,14 +345,33 @@ export function normalizeEditorSelection(
   selection: EditorSelectionState,
 ): EditorSelectionState {
   const boardIds = new Set(document.boards.map(board => board.id))
+  const assemblyIds = new Set(document.assemblies.map(assembly => assembly.id))
   const nextSelectedBoardIds = selection.selectedBoardIds.filter(boardId =>
     boardIds.has(boardId),
   )
+  const nextSelectedAssemblyIds = selection.selectedAssemblyIds.filter(assemblyId =>
+    assemblyIds.has(assemblyId),
+  )
+  const nextActiveAssemblyId
+    = assemblyIds.has(selection.activeAssemblyId)
+      ? selection.activeAssemblyId
+      : nextSelectedAssemblyIds[0] ?? ''
 
   const nextActiveBoardId
     = boardIds.has(selection.activeBoardId)
       ? selection.activeBoardId
       : nextSelectedBoardIds[0] ?? document.boards[0]?.id ?? ''
+
+  if (nextActiveAssemblyId) {
+    return {
+      activeAssemblyId: nextActiveAssemblyId,
+      activeBoardId: '',
+      selectedAssemblyIds: nextSelectedAssemblyIds.includes(nextActiveAssemblyId)
+        ? nextSelectedAssemblyIds
+        : nextActiveAssemblyIdsWithActive(nextSelectedAssemblyIds, nextActiveAssemblyId),
+      selectedBoardIds: [],
+    }
+  }
 
   if (nextSelectedBoardIds.length === 0 && nextActiveBoardId) {
     return createEditorSelection(nextActiveBoardId)
@@ -336,15 +379,30 @@ export function normalizeEditorSelection(
 
   if (nextSelectedBoardIds.includes(nextActiveBoardId)) {
     return {
+      activeAssemblyId: '',
       activeBoardId: nextActiveBoardId,
+      selectedAssemblyIds: [],
       selectedBoardIds: nextSelectedBoardIds,
     }
   }
 
   return {
+    activeAssemblyId: '',
     activeBoardId: nextActiveBoardId,
+    selectedAssemblyIds: [],
     selectedBoardIds: nextActiveBoardIdsWithActive(nextSelectedBoardIds, nextActiveBoardId),
   }
+}
+
+function nextActiveAssemblyIdsWithActive(
+  selectedAssemblyIds: string[],
+  activeAssemblyId: string,
+) {
+  if (!activeAssemblyId) {
+    return selectedAssemblyIds
+  }
+
+  return [...selectedAssemblyIds, activeAssemblyId]
 }
 
 function nextActiveBoardIdsWithActive(
@@ -362,13 +420,24 @@ export function selectSingleBoard(boardId: string): EditorSelectionState {
   return createEditorSelection(boardId)
 }
 
+export function selectSingleAssembly(assemblyId: string): EditorSelectionState {
+  return {
+    activeAssemblyId: assemblyId,
+    activeBoardId: '',
+    selectedAssemblyIds: assemblyId ? [assemblyId] : [],
+    selectedBoardIds: [],
+  }
+}
+
 export function toggleBoardSelection(
   selection: EditorSelectionState,
   boardId: string,
 ): EditorSelectionState {
   if (!selection.selectedBoardIds.includes(boardId)) {
     return {
+      activeAssemblyId: '',
       activeBoardId: boardId,
+      selectedAssemblyIds: [],
       selectedBoardIds: [...selection.selectedBoardIds, boardId],
     }
   }
@@ -382,8 +451,39 @@ export function toggleBoardSelection(
       : selection.activeBoardId
 
   return {
+    activeAssemblyId: '',
     activeBoardId: nextActiveBoardId,
+    selectedAssemblyIds: [],
     selectedBoardIds: nextSelectedBoardIds,
+  }
+}
+
+export function toggleAssemblySelection(
+  selection: EditorSelectionState,
+  assemblyId: string,
+): EditorSelectionState {
+  if (!selection.selectedAssemblyIds.includes(assemblyId)) {
+    return {
+      activeAssemblyId: assemblyId,
+      activeBoardId: '',
+      selectedAssemblyIds: [...selection.selectedAssemblyIds, assemblyId],
+      selectedBoardIds: [],
+    }
+  }
+
+  const nextSelectedAssemblyIds = selection.selectedAssemblyIds.filter(
+    selectedAssemblyId => selectedAssemblyId !== assemblyId,
+  )
+  const nextActiveAssemblyId
+    = selection.activeAssemblyId === assemblyId
+      ? nextSelectedAssemblyIds.at(-1) ?? ''
+      : selection.activeAssemblyId
+
+  return {
+    activeAssemblyId: nextActiveAssemblyId,
+    activeBoardId: '',
+    selectedAssemblyIds: nextSelectedAssemblyIds,
+    selectedBoardIds: [],
   }
 }
 
@@ -430,6 +530,169 @@ export function updateDocumentTimestamp(document: PatternDocument): PatternDocum
       updatedAt: new Date().toISOString(),
     },
   }
+}
+
+function findBoxelAssemblyAtColumn(
+  document: PatternDocument,
+  column: ControlPoint,
+) {
+  return document.assemblies.find(assembly =>
+    assembly.origin.x === column.x && assembly.origin.y === column.y,
+  ) ?? null
+}
+
+function sortAssembliesByOrigin(assemblies: BoxelAssembly[]) {
+  return [...assemblies].sort((left, right) => {
+    if (left.origin.x !== right.origin.x) {
+      return left.origin.x - right.origin.x
+    }
+
+    if (left.origin.y !== right.origin.y) {
+      return left.origin.y - right.origin.y
+    }
+
+    return left.id.localeCompare(right.id)
+  })
+}
+
+function createBoxelAssembly(column: ControlPoint): BoxelAssembly {
+  return {
+    id: getRandomId('assembly'),
+    name: 'Boxel assembly',
+    cellSize: BOXEL_DEFAULT_CELL_SIZE,
+    origin: {
+      x: column.x,
+      y: column.y,
+    },
+    cells: [{ x: 0, y: 0, z: 0 }],
+  }
+}
+
+export function commitBoxelAtColumn(
+  document: PatternDocument,
+  column: ControlPoint,
+): BoxelCommitResult {
+  const existingAssembly = findBoxelAssemblyAtColumn(document, column)
+  if (existingAssembly) {
+    const assembly = appendBoxelCellAboveColumn(existingAssembly, { x: 0, y: 0 })
+
+    return {
+      assembly,
+      document: updateDocumentTimestamp({
+        ...document,
+        assemblies: sortAssembliesByOrigin(document.assemblies.map(currentAssembly =>
+          currentAssembly.id === assembly.id ? assembly : currentAssembly,
+        )),
+      }),
+      selection: selectSingleAssembly(assembly.id),
+    }
+  }
+
+  const adjacentAssemblies = findFaceAdjacentAssemblies(document.assemblies, {
+    x: Math.round(column.x / BOXEL_DEFAULT_CELL_SIZE),
+    y: Math.round(column.y / BOXEL_DEFAULT_CELL_SIZE),
+    z: 0,
+  })
+  const assembly = adjacentAssemblies.length > 0
+    ? mergeAssembliesThroughWorldCell(adjacentAssemblies, {
+        x: Math.round(column.x / BOXEL_DEFAULT_CELL_SIZE),
+        y: Math.round(column.y / BOXEL_DEFAULT_CELL_SIZE),
+        z: 0,
+      })
+    : createBoxelAssembly(column)
+
+  if (!assembly) {
+    const fallbackAssembly = createBoxelAssembly(column)
+    return {
+      assembly: fallbackAssembly,
+      document: updateDocumentTimestamp({
+        ...document,
+        assemblies: [...document.assemblies, fallbackAssembly],
+      }),
+      selection: selectSingleAssembly(fallbackAssembly.id),
+    }
+  }
+
+  const touchedAssemblyIds = new Set(adjacentAssemblies.map(currentAssembly => currentAssembly.id))
+
+  return {
+    assembly,
+    document: updateDocumentTimestamp({
+      ...document,
+      assemblies: sortAssembliesByOrigin(
+        adjacentAssemblies.length > 0
+          ? [
+              ...document.assemblies.filter(currentAssembly =>
+                !touchedAssemblyIds.has(currentAssembly.id),
+              ),
+              assembly,
+            ]
+          : [...document.assemblies, assembly],
+      ),
+    }),
+    selection: selectSingleAssembly(assembly.id),
+  }
+}
+
+export function removeBoxelFromAssembly(
+  document: PatternDocument,
+  assemblyId: string,
+  cell: BoxelCell,
+): BoxelRemoveResult {
+  const assembly = document.assemblies.find(currentAssembly => currentAssembly.id === assemblyId)
+  if (!assembly) {
+    return {
+      document,
+      removed: false,
+      selection: normalizeEditorSelection(document, createEditorSelection('')),
+    }
+  }
+
+  const remainingCells = assembly.cells.filter(existingCell =>
+    existingCell.x !== cell.x
+    || existingCell.y !== cell.y
+    || existingCell.z !== cell.z,
+  )
+
+  if (remainingCells.length === assembly.cells.length) {
+    return {
+      document,
+      removed: false,
+      selection: selectSingleAssembly(assemblyId),
+    }
+  }
+
+  const replacementAssemblies = remainingCells.length > 0
+    ? splitAssemblyIntoConnectedComponents({
+        ...assembly,
+        cells: remainingCells,
+      }).map((component, index) => ({
+        ...component,
+        id: index === 0 ? assembly.id : getRandomId('assembly'),
+      }))
+    : []
+
+  const nextDocument = updateDocumentTimestamp({
+    ...document,
+    assemblies: sortAssembliesByOrigin([
+      ...document.assemblies.filter(currentAssembly => currentAssembly.id !== assemblyId),
+      ...replacementAssemblies,
+    ]),
+  })
+
+  const nextSelection = replacementAssemblies[0]
+    ? selectSingleAssembly(replacementAssemblies[0].id)
+    : normalizeEditorSelection(nextDocument, createEditorSelection(''))
+
+  return {
+    document: nextDocument,
+    removed: true,
+    selection: nextSelection,
+  }
+}
+
+export function getAssemblyJointCandidates(assembly: BoxelAssembly) {
+  return buildJointCandidates(assembly)
 }
 
 export function createBoardFromPreset(preset: ShapePreset, index: number): Board {
