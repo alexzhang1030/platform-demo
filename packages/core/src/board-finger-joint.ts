@@ -31,7 +31,16 @@ function getOutwardDirection(board: Board, anchor: BoardAnchorSide): ControlPoin
     return { x: baseline.direction.x, y: baseline.direction.y }
   }
 
-  // top/bottom anchors are mid-face — not supported for finger joints
+  if (anchor === 'top') {
+    // Normal to baseline (90 deg CCW)
+    return { x: -baseline.direction.y, y: baseline.direction.x }
+  }
+
+  if (anchor === 'bottom') {
+    // Inverse normal (90 deg CW)
+    return { x: baseline.direction.y, y: -baseline.direction.x }
+  }
+
   return null
 }
 
@@ -107,21 +116,33 @@ function buildFingerEdgePoints(
   fingerWidth: number,
   fingerCount: number,
   startWithTab: boolean,
+  horizontal = false,
 ): ControlPoint[] {
   const points: ControlPoint[] = []
   const direction = yEnd > yStart ? 1 : -1
 
   for (let i = 0; i < fingerCount; i++) {
     const isTab = startWithTab ? i % 2 === 0 : i % 2 !== 0
-    const yA = yStart + direction * i * fingerWidth
-    const yB = yStart + direction * (i + 1) * fingerWidth
+    const offset = yStart + direction * i * fingerWidth
+    const nextOffset = yStart + direction * (i + 1) * fingerWidth
 
-    if (isTab) {
-      points.push({ x: xBase + tabDir * depth, y: yA })
-      points.push({ x: xBase + tabDir * depth, y: yB })
-    } else {
-      points.push({ x: xBase, y: yA })
-      points.push({ x: xBase, y: yB })
+    if (horizontal) {
+      if (isTab) {
+        points.push({ x: offset, y: xBase + tabDir * depth })
+        points.push({ x: nextOffset, y: xBase + tabDir * depth })
+      } else {
+        points.push({ x: offset, y: xBase })
+        points.push({ x: nextOffset, y: xBase })
+      }
+    }
+    else {
+      if (isTab) {
+        points.push({ x: xBase + tabDir * depth, y: offset })
+        points.push({ x: xBase + tabDir * depth, y: nextOffset })
+      } else {
+        points.push({ x: xBase, y: offset })
+        points.push({ x: xBase, y: nextOffset })
+      }
     }
   }
 
@@ -149,12 +170,24 @@ function buildOutlineWithFingerJoints(
   height: number,
   leftEdge: EdgeOptions | null,
   rightEdge: EdgeOptions | null,
+  topEdge: EdgeOptions | null,
+  bottomEdge: EdgeOptions | null,
 ): Path2DShape {
   const points: ControlPoint[] = []
 
   // Bottom edge: left → right (y = 0)
-  points.push({ x: 0, y: 0 })
-  points.push({ x: length, y: 0 })
+  if (bottomEdge) {
+    const edgePoints = buildFingerEdgePoints(
+      0, 0, length, bottomEdge.depth, -1,
+      bottomEdge.fingerWidth, bottomEdge.fingerCount, bottomEdge.startWithTab,
+      true, // horizontal
+    )
+    points.push(...edgePoints)
+  }
+  else {
+    points.push({ x: 0, y: 0 })
+    points.push({ x: length, y: 0 })
+  }
 
   // Right edge: bottom → top (y = 0 → height)
   if (rightEdge) {
@@ -162,14 +195,26 @@ function buildOutlineWithFingerJoints(
       length, 0, height, rightEdge.depth, 1,
       rightEdge.fingerWidth, rightEdge.fingerCount, rightEdge.startWithTab,
     )
-    // The first point duplicates (length, 0) — skip it; last point leads to (length, height)
+    // skip duplicate first point
     points.push(...edgePoints.slice(1))
-  } else {
+  }
+  else {
     points.push({ x: length, y: height })
   }
 
-  // Top edge: right → left (y = height)
-  points.push({ x: 0, y: height })
+  // Top edge: right → left (x = length → 0 at y = height)
+  if (topEdge) {
+    const edgePoints = buildFingerEdgePoints(
+      length, height, 0, topEdge.depth, 1,
+      topEdge.fingerWidth, topEdge.fingerCount, topEdge.startWithTab,
+      true, // horizontal
+    )
+    // skip duplicate first point
+    points.push(...edgePoints.slice(1))
+  }
+  else {
+    points.push({ x: 0, y: height })
+  }
 
   // Left edge: top → bottom (y = height → 0)
   if (leftEdge) {
@@ -177,10 +222,10 @@ function buildOutlineWithFingerJoints(
       0, height, 0, leftEdge.depth, -1,
       leftEdge.fingerWidth, leftEdge.fingerCount, leftEdge.startWithTab,
     )
-    // The first point duplicates (0, height) — skip it; last point leads to (0, 0)
+    // skip duplicate first point
     points.push(...edgePoints.slice(1))
   }
-  // closing back to (0, 0) is implicit in the shape
+  // closing point implicit
 
   return createLineShape(points)
 }
@@ -228,13 +273,15 @@ export function getBoardOutlineWithJoints(
 
   let leftEdge: EdgeOptions | null = null
   let rightEdge: EdgeOptions | null = null
+  let topEdge: EdgeOptions | null = null
+  let bottomEdge: EdgeOptions | null = null
 
   for (const { connection, isA } of relevantConnections) {
     const myAnchor = isA ? connection.a.anchor : connection.b.anchor
     const otherBoardId = isA ? connection.b.boardId : connection.a.boardId
     const otherBoard = allBoards.find(b => b.id === otherBoardId)
 
-    if (!otherBoard || (myAnchor !== 'left' && myAnchor !== 'right')) {
+    if (!otherBoard) {
       continue
     }
 
@@ -256,22 +303,22 @@ export function getBoardOutlineWithJoints(
       ? otherBoard.thickness
       : Math.min(board.thickness, length * 0.25)
 
-    const { fingerCount, fingerWidth } = computeFingerPattern(height, board.thickness)
+    const dimension = (myAnchor === 'left' || myAnchor === 'right') ? height : length
+    const { fingerCount, fingerWidth } = computeFingerPattern(dimension, board.thickness)
     // The 'a' endpoint board always starts with a tab
     const startWithTab = isA
 
     const edgeOptions: EdgeOptions = { depth, fingerCount, fingerWidth, startWithTab }
 
-    if (myAnchor === 'left') {
-      leftEdge = edgeOptions
-    } else {
-      rightEdge = edgeOptions
-    }
+    if (myAnchor === 'left') leftEdge = edgeOptions
+    if (myAnchor === 'right') rightEdge = edgeOptions
+    if (myAnchor === 'top') topEdge = edgeOptions
+    if (myAnchor === 'bottom') bottomEdge = edgeOptions
   }
 
-  if (!leftEdge && !rightEdge) {
+  if (!leftEdge && !rightEdge && !topEdge && !bottomEdge) {
     return board.outline
   }
 
-  return buildOutlineWithFingerJoints(length, height, leftEdge, rightEdge)
+  return buildOutlineWithFingerJoints(length, height, leftEdge, rightEdge, topEdge, bottomEdge)
 }

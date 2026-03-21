@@ -416,12 +416,14 @@ function BoardMesh({
 
     if (board.transform.orientation === 'hinged') {
       const pitch = board.transform.pitch ?? 0
+      const flipFactor = board.transform.flipPitch ? -1 : 1
       // Pitch is relative to flat (0deg = flat, 90deg = upright)
-      return [(pitch * Math.PI) / 180, 0, 0]
+      // If flipped, we negate the rotation to tilt "up" from the -Y side
+      return [(pitch * Math.PI * flipFactor) / 180, 0, 0]
     }
 
     return [0, 0, 0]
-  }, [board.transform.orientation, board.transform.pitch])
+  }, [board.transform.orientation, board.transform.pitch, board.transform.flipPitch])
 
   useEffect(() => {
     if (!geometry) {
@@ -1600,7 +1602,13 @@ export function BoardPreview3D({
     const result = addGableRoofToGroup(latestDocumentRef.current, activeGroupId)
     if (result) {
       onDocumentChange(result.document)
-      onSelectionChange(result.selection)
+      
+      // Delay selection by two frames to ensure WebGPU geometries are ready
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          onSelectionChange(result.selection)
+        })
+      })
     }
   }
 
