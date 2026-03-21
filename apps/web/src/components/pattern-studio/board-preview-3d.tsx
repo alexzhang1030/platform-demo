@@ -1,11 +1,14 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import type {
   Board,
+  BoardAnchorSide,
   BoardConnection,
+  BoardGroup,
   BoxelAssembly,
   ControlPoint,
   PatternDocument,
 } from '@xtool-demo/protocol'
+import type { AnchorPoint3D } from '@xtool-demo/core'
 import type { ComponentRef, RefObject } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
@@ -16,14 +19,18 @@ import {
 import { Canvas, useThree } from '@react-three/fiber'
 import {
   buildBoxelAssemblyBounds,
+  createUprightBoardOutline,
   findAnchorConnections,
   findBoardAnchorMoveSnap,
   getBoardAnchorPositions,
   getBoardAnchorPositions3D,
+  getBoardOutlineWithJoints,
   getBoxelCellWorldPosition,
   getBoxelColumnHeight,
   getBoardGroundFootprint,
+  getUprightBoardBaseline,
   getUprightBoardHeight,
+  getUprightBoardLength,
   mergeBoardsThroughConnection,
   sampleShapePoints,
 } from '@xtool-demo/core'
@@ -39,6 +46,7 @@ import {
   commitStandingBoardFromSpan,
   createStandingBoardPreview,
   getBoardGroupForBoard,
+  moveAssemblyByDelta,
   moveBoardsByDelta,
   removeBoxelFromAssembly,
   selectSingleAssembly,
@@ -62,10 +70,13 @@ interface BoardPreview3DProps {
   onSelectionChange: (selection: EditorSelectionState) => void
   onDocumentChange: (document: PatternDocument) => void
   canvasClassName?: string
+  onActivateCreateBoardMode?: () => void
 }
 
 interface BoardMeshProps {
+  allBoards: Board[]
   board: Board
+  boardGroups: BoardGroup[]
   onMeshChange: (boardId: string, object: THREE.Object3D | null) => void
   onDoubleClick?: (event: ThreeEvent<MouseEvent>, board: Board) => void
   onPointerDown?: (event: ThreeEvent<PointerEvent>, board: Board) => void
@@ -104,7 +115,10 @@ interface SceneProps extends BoardPreview3DProps {
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
   latestDocumentRef: RefObject<PatternDocument>
+  localCreateModeActive: boolean
+  onActivateLocalCreateMode: () => void
   onBoardEditRequest?: (boardId: string) => void
+  onClearLocalCreateMode: () => void
   onCreateBoardDraftChange: (draft: CreateBoardDraft | null) => void
   onGroupStateChange: (groupId: string) => void
   resolvedTheme: 'dark' | 'light'
@@ -159,6 +173,17 @@ interface DragConnectionPreview {
 
 interface JointCandidateBarProps {
   assembly: BoxelAssembly
+}
+
+interface HeightResizeDraft {
+  boardId: string
+  originalHeight: number
+  previewHeight: number
+  resizePlane: THREE.Plane
+}
+
+function isBoardAnchorSide(side: string): side is BoardAnchorSide {
+  return side === 'top' || side === 'left' || side === 'right' || side === 'bottom'
 }
 
 const MIN_CREATE_BOARD_SPAN = 1
@@ -316,7 +341,9 @@ function toUprightBoardShape(points: ControlPoint[]) {
 }
 
 function BoardMesh({
+  allBoards,
   board,
+  boardGroups,
   onMeshChange,
   onDoubleClick,
   onPointerDown,
@@ -325,7 +352,8 @@ function BoardMesh({
   preview = false,
 }: BoardMeshProps) {
   const geometry = useMemo(() => {
-    const outlinePoints = sampleShapePoints(board.outline)
+    const outline = getBoardOutlineWithJoints(board, boardGroups, allBoards)
+    const outlinePoints = sampleShapePoints(outline)
     const shape = board.transform.orientation === 'upright'
       ? toUprightBoardShape(outlinePoints)
       : toFlatBoardShape(outlinePoints)
@@ -354,7 +382,7 @@ function BoardMesh({
     }
     nextGeometry.computeVertexNormals()
     return nextGeometry
-  }, [board])
+  }, [allBoards, board, boardGroups])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -481,6 +509,10 @@ function Scene({
   initialCameraFraming,
   isCameraPanModifierPressed,
   isCreateBoardAngleSnapDisabled,
+  localCreateModeActive,
+  onActivateLocalCreateMode,
+  onClearLocalCreateMode,
+  onActivateCreateBoardMode,
   resolvedTheme,
 }: SceneProps) {
   const { camera, gl } = useThree()
@@ -488,6 +520,12 @@ function Scene({
   const createCursorRingRef = useRef<THREE.Mesh | null>(null)
   const createCursorSphereRef = useRef<THREE.Mesh | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
+  const heightResizeDraftRef = useRef<HeightResizeDraft | null>(null)
+  const assemblyDragStateRef = useRef<{
+    assemblyId: string
+    startPoint: THREE.Vector3
+    document: PatternDocument
+  } | null>(null)
   const dragMovedRef = useRef(false)
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
@@ -498,8 +536,9 @@ function Scene({
     y: 0,
   })
   const [dragConnectionPreview, setDragConnectionPreview] = useState<DragConnectionPreview | null>(null)
+  const [heightResizePreview, setHeightResizePreview] = useState<{ boardId: string; height: number } | null>(null)
   const isBoxelEditModeActive = boxelModeEnabled || boxelRemoveModeEnabled
-  const isCreateModeActive = createBoardModeEnabled || isBoxelEditModeActive
+  const isCreateModeActive = createBoardModeEnabled || localCreateModeActive || isBoxelEditModeActive
   const workspaceBounds = useMemo(() => getBoardWorkspaceBounds(document), [document])
   const groundPlaneSize = Math.max(workspaceBounds.maxDimension * 6, 2400)
   const createPreviewBoards = useMemo(() => {
@@ -648,6 +687,47 @@ function Scene({
     onGroupStateChange,
   ])
 
+  const finishAssemblyDrag = useCallback(() => {
+    assemblyDragStateRef.current = null
+
+    const controls = controlsRef.current
+    if (controls) {
+      controls.enabled = true
+    }
+  }, [controlsRef])
+
+  const finishHeightResize = useCallback(() => {
+    const draft = heightResizeDraftRef.current
+    if (!draft) {
+      return
+    }
+
+    const newHeight = Math.max(1, draft.previewHeight)
+    const board = latestDocumentRef.current.boards.find(b => b.id === draft.boardId)
+    if (board) {
+      const boardLength = getUprightBoardLength(board)
+      if (boardLength) {
+        const updatedBoard = {
+          ...board,
+          outline: createUprightBoardOutline(boardLength, newHeight, null),
+        }
+        const nextDocument = updateDocumentTimestamp({
+          ...latestDocumentRef.current,
+          boards: latestDocumentRef.current.boards.map(b => b.id === draft.boardId ? updatedBoard : b),
+        })
+        onDocumentChange(nextDocument)
+      }
+    }
+
+    heightResizeDraftRef.current = null
+    setHeightResizePreview(null)
+
+    const controls = controlsRef.current
+    if (controls) {
+      controls.enabled = true
+    }
+  }, [controlsRef, latestDocumentRef, onDocumentChange])
+
   const getSnappedCreatePoint = useCallback((point: THREE.Vector3) => {
     const gridPoint = snapPointToGrid(getCreateBoardPlanePoint(point))
     return (!createBoardDraft || isCreateBoardAngleSnapDisabled)
@@ -741,62 +821,97 @@ function Scene({
         }
       }
 
+      const heightResizeDraft = heightResizeDraftRef.current
+      if (heightResizeDraft) {
+        const intersection = new THREE.Vector3()
+        const hit = raycasterRef.current.ray.intersectPlane(heightResizeDraft.resizePlane, intersection)
+        if (hit) {
+          const newHeight = Math.max(1, intersection.z)
+          heightResizeDraft.previewHeight = newHeight
+          setHeightResizePreview({ boardId: heightResizeDraft.boardId, height: newHeight })
+        }
+      }
+
       const dragState = dragStateRef.current
-      if (!dragState) {
+      const assemblyDragState = assemblyDragStateRef.current
+
+      if (!dragState && !assemblyDragState && !heightResizeDraft) {
         return
       }
-      if (!planePoint) {
+      if (!planePoint && !heightResizeDraft) {
         return
       }
 
-      const deltaX = planePoint.x - dragState.startPoint.x
-      const deltaY = -(planePoint.y - dragState.startPoint.y)
-      if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
-        dragMovedRef.current = true
-      }
-      const movedDocument = moveBoardsByDelta(
-        dragState.document,
-        dragState.selectedBoardIds,
-        {
-          x: deltaX,
-          y: deltaY,
-        },
-      )
-      let nextDocument = movedDocument
+      if (dragState) {
+        const deltaX = planePoint.x - dragState.startPoint.x
+        const deltaY = -(planePoint.y - dragState.startPoint.y)
+        if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
+          dragMovedRef.current = true
+        }
+        const movedDocument = moveBoardsByDelta(
+          dragState.document,
+          dragState.selectedBoardIds,
+          {
+            x: deltaX,
+            y: deltaY,
+          },
+        )
+        let nextDocument = movedDocument
 
-      if (dragState.selectedBoardIds.length === 1) {
-        const movingBoard = movedDocument.boards.find(b => b.id === dragState.movingBoardId)
-        const rawSnap = movingBoard
-          ? findBoardAnchorMoveSnap(movingBoard, movedDocument.boards, BOARD_ANCHOR_SNAP_THRESHOLD)
-          : null
-        const snap = rawSnap && !getPersistentBoardGroup(rawSnap.targetBoardId)
-          ? rawSnap
-          : null
+        if (dragState.selectedBoardIds.length === 1) {
+          const movingBoard = movedDocument.boards.find(b => b.id === dragState.movingBoardId)
+          const rawSnap = movingBoard
+            ? findBoardAnchorMoveSnap(movingBoard, movedDocument.boards, BOARD_ANCHOR_SNAP_THRESHOLD)
+            : null
+          const snap = rawSnap && !getPersistentBoardGroup(rawSnap.targetBoardId)
+            ? rawSnap
+            : null
 
-        dragState.pendingSnap = snap
+          dragState.pendingSnap = snap
 
-        if (snap) {
-          nextDocument = moveBoardsByDelta(movedDocument, dragState.selectedBoardIds, snap.offset)
-          setDragConnectionPreview({
-            lineEnd: { x: snap.snapPoint.x + 54, y: -snap.snapPoint.y },
-            lineStart: { x: snap.snapPoint.x - 54, y: -snap.snapPoint.y },
-            point: { x: snap.snapPoint.x, y: -snap.snapPoint.y },
-          })
+          if (snap) {
+            nextDocument = moveBoardsByDelta(movedDocument, dragState.selectedBoardIds, snap.offset)
+            setDragConnectionPreview({
+              lineEnd: { x: snap.snapPoint.x + 54, y: -snap.snapPoint.y },
+              lineStart: { x: snap.snapPoint.x - 54, y: -snap.snapPoint.y },
+              point: { x: snap.snapPoint.x, y: -snap.snapPoint.y },
+            })
+          } else {
+            setDragConnectionPreview(null)
+          }
         } else {
+          dragState.pendingSnap = null
           setDragConnectionPreview(null)
         }
-      } else {
-        dragState.pendingSnap = null
-        setDragConnectionPreview(null)
+
+        onDocumentChange(
+          updateDocumentTimestamp(nextDocument),
+        )
       }
 
-      onDocumentChange(
-        updateDocumentTimestamp(nextDocument),
-      )
+      if (assemblyDragState) {
+        const deltaX = planePoint.x - assemblyDragState.startPoint.x
+        const deltaY = -(planePoint.y - assemblyDragState.startPoint.y)
+
+        if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
+          dragMovedRef.current = true
+        }
+
+        if (dragMovedRef.current) {
+          const movedDocument = moveAssemblyByDelta(
+            assemblyDragState.document,
+            assemblyDragState.assemblyId,
+            { x: deltaX, y: deltaY },
+          )
+          onDocumentChange(updateDocumentTimestamp(movedDocument))
+        }
+      }
     }
 
     const handleWindowPointerUp = () => {
       finishBoardDrag()
+      finishAssemblyDrag()
+      finishHeightResize()
     }
 
     window.addEventListener('pointermove', handleWindowPointerMove)
@@ -806,7 +921,7 @@ function Scene({
       window.removeEventListener('pointermove', handleWindowPointerMove)
       window.removeEventListener('pointerup', handleWindowPointerUp)
     }
-  }, [boxelModeEnabled, boxelRemoveModeEnabled, camera, finishBoardDrag, getPersistentBoardGroup, getSnappedCreatePoint, gl, latestDocumentRef, onDocumentChange, syncCreateCursor])
+  }, [boxelModeEnabled, boxelRemoveModeEnabled, camera, finishAssemblyDrag, finishBoardDrag, finishHeightResize, getPersistentBoardGroup, getSnappedCreatePoint, gl, latestDocumentRef, onDocumentChange, syncCreateCursor])
 
   function handleBoardPointerDown(event: ThreeEvent<PointerEvent>, board: Board) {
     if (isCreateModeActive) {
@@ -947,6 +1062,7 @@ function Scene({
     const spanLength = getCreateBoardSpanLength(createBoardDraft.start, nextPoint)
     if (spanLength < MIN_CREATE_BOARD_SPAN) {
       onCreateBoardDraftChange(null)
+      onClearLocalCreateMode()
       return
     }
 
@@ -965,6 +1081,59 @@ function Scene({
     onDocumentChange(nextDocument)
     onSelectionChange(selectSingleBoard(nextBoard.id))
     onCreateBoardDraftChange(null)
+    onClearLocalCreateMode()
+  }
+
+  function handleAnchorPointerDown(event: ThreeEvent<PointerEvent>, pos: AnchorPoint3D, side: string, board: Board) {
+    if (isCreateModeActive) {
+      return
+    }
+
+    if (!isBoardAnchorSide(side)) {
+      return
+    }
+
+    event.stopPropagation()
+
+    if (side === 'top') {
+      const baseline = getUprightBoardBaseline(board)
+      const currentHeight = getUprightBoardHeight(board)
+      if (!baseline || !currentHeight) {
+        return
+      }
+
+      const dx = baseline.end.x - baseline.start.x
+      const dy = -(baseline.end.y - baseline.start.y)
+      const len = Math.hypot(dx, dy)
+      if (len < 0.001) {
+        return
+      }
+
+      const dbx = dx / len
+      const dby = dy / len
+      const normal = new THREE.Vector3(dby, -dbx, 0)
+      const midPoint = new THREE.Vector3(pos.x, pos.y, 0)
+      const resizePlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, midPoint)
+
+      heightResizeDraftRef.current = {
+        boardId: board.id,
+        originalHeight: currentHeight,
+        previewHeight: currentHeight,
+        resizePlane,
+      }
+      setHeightResizePreview({ boardId: board.id, height: currentHeight })
+
+      const controls = controlsRef.current
+      if (controls) {
+        controls.enabled = false
+      }
+      return
+    }
+
+    const anchorPoint = new THREE.Vector3(pos.x, pos.y, 0)
+    onCreateBoardDraftChange({ start: anchorPoint, end: anchorPoint })
+    onActivateLocalCreateMode()
+    onActivateCreateBoardMode?.()
   }
 
   function handleAssemblyPointerDown(event: ThreeEvent<PointerEvent>, assembly: BoxelAssembly) {
@@ -980,6 +1149,23 @@ function Scene({
     }
 
     onSelectionChange(selectSingleAssembly(assembly.id))
+
+    const planePoint = getPlaneIntersection(event)
+    if (!planePoint) {
+      return
+    }
+
+    dragMovedRef.current = false
+    assemblyDragStateRef.current = {
+      assemblyId: assembly.id,
+      startPoint: planePoint.clone(),
+      document: latestDocumentRef.current,
+    }
+
+    const controls = controlsRef.current
+    if (controls) {
+      controls.enabled = false
+    }
   }
 
   function handleAssemblyCellPointerDown(
@@ -1037,24 +1223,43 @@ function Scene({
           </>
         )
         : null}
-      {document.boards.map((board) => (
-        <BoardMesh
-          key={board.id}
-          board={board}
-          onMeshChange={handleMeshChange}
-          onDoubleClick={isCreateModeActive ? undefined : handleBoardDoubleClick}
-          onPointerDown={isCreateModeActive ? undefined : handleBoardPointerDown}
-          onPointerMove={isCreateModeActive ? undefined : handleBoardPointerMove}
-          onPointerUp={isCreateModeActive ? undefined : handleBoardPointerUp}
-        />
-      ))}
+      {document.boards.map((board) => {
+        let renderBoard = board
+        if (heightResizePreview && heightResizePreview.boardId === board.id) {
+          const boardLength = getUprightBoardLength(board)
+          if (boardLength) {
+            renderBoard = {
+              ...board,
+              outline: createUprightBoardOutline(boardLength, Math.max(1, heightResizePreview.height), null),
+            }
+          }
+        }
+
+        return (
+          <BoardMesh
+            key={board.id}
+            allBoards={document.boards}
+            board={renderBoard}
+            boardGroups={document.boardGroups}
+            onMeshChange={handleMeshChange}
+            onDoubleClick={isCreateModeActive ? undefined : handleBoardDoubleClick}
+            onPointerDown={isCreateModeActive ? undefined : handleBoardPointerDown}
+            onPointerMove={isCreateModeActive ? undefined : handleBoardPointerMove}
+            onPointerUp={isCreateModeActive ? undefined : handleBoardPointerUp}
+          />
+        )
+      })}
       {document.boards.filter(board =>
         selection.selectedBoardIds.includes(board.id)
         || selection.activeBoardId === board.id,
       ).flatMap((board) => {
         const anchors = getBoardAnchorPositions3D(board)
         return Object.entries(anchors).map(([side, pos]) => (
-          <mesh key={`anchor-${board.id}-${side}`} position={[pos.x, pos.y, pos.z]}>
+          <mesh
+            key={`anchor-${board.id}-${side}`}
+            position={[pos.x, pos.y, pos.z]}
+            onPointerDown={e => handleAnchorPointerDown(e, pos, side, board)}
+          >
             <sphereGeometry args={[5, 16, 16]} />
             <meshBasicMaterial color="#f59e0b" depthWrite={false} transparent opacity={0.85} />
           </mesh>
@@ -1118,7 +1323,9 @@ function Scene({
         ? createPreviewBoards.map((previewBoard, index) => (
           <BoardMesh
             key={`draft-board-preview-${index}`}
+            allBoards={document.boards}
             board={previewBoard}
+            boardGroups={document.boardGroups}
             onMeshChange={() => { }}
             preview
           />
@@ -1164,6 +1371,7 @@ function Scene({
         enableDamping
         makeDefault
         maxDistance={4200}
+        maxPolarAngle={Math.PI / 2}
         minDistance={80}
         mouseButtons={{
           LEFT: isCameraPanModifierPressed ? THREE.MOUSE.PAN : undefined,
@@ -1187,6 +1395,7 @@ export function BoardPreview3D({
   onSelectionChange,
   onDocumentChange,
   canvasClassName,
+  onActivateCreateBoardMode,
 }: BoardPreview3DProps) {
   const { resolvedTheme } = useTheme()
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null)
@@ -1196,6 +1405,7 @@ export function BoardPreview3D({
     getCameraFraming(getBoardWorkspaceBounds(document)),
   )
   const [createBoardDraft, setCreateBoardDraft] = useState<CreateBoardDraft | null>(null)
+  const [localCreateModeActive, setLocalCreateModeActive] = useState(false)
   const [isCameraPanModifierPressed, setIsCameraPanModifierPressed] = useState(false)
   const [isCreateBoardAngleSnapDisabled, setIsCreateBoardAngleSnapDisabled] = useState(false)
   const [activeGroupId, setActiveGroupId] = useState('')
@@ -1243,7 +1453,7 @@ export function BoardPreview3D({
         setIsCameraPanModifierPressed(true)
       }
 
-      if (!createBoardModeEnabled) {
+      if (!createBoardModeEnabled && !localCreateModeActive) {
         if (boxelModeEnabled && event.key === 'Escape') {
           return
         }
@@ -1257,6 +1467,7 @@ export function BoardPreview3D({
 
       if (event.key === 'Escape') {
         setCreateBoardDraft(null)
+        setLocalCreateModeActive(false)
       }
     }
 
@@ -1284,7 +1495,7 @@ export function BoardPreview3D({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleWindowBlur)
     }
-  }, [boxelModeEnabled, createBoardModeEnabled])
+  }, [boxelModeEnabled, createBoardModeEnabled, localCreateModeActive])
 
   return (
     <div className={wrapperClassName}>
@@ -1324,7 +1535,11 @@ export function BoardPreview3D({
             createBoardModeEnabled={createBoardModeEnabled}
             document={document}
             latestDocumentRef={latestDocumentRef}
+            localCreateModeActive={localCreateModeActive}
+            onActivateCreateBoardMode={onActivateCreateBoardMode}
+            onActivateLocalCreateMode={() => setLocalCreateModeActive(true)}
             onBoardEditRequest={onBoardEditRequest}
+            onClearLocalCreateMode={() => setLocalCreateModeActive(false)}
             selection={selection}
             onSelectionChange={onSelectionChange}
             onCreateBoardDraftChange={setCreateBoardDraft}

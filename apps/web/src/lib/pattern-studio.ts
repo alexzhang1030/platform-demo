@@ -521,6 +521,29 @@ export function moveBoardsByDelta(
   }
 }
 
+export function moveAssemblyByDelta(
+  document: PatternDocument,
+  assemblyId: string,
+  delta: { x: number; y: number },
+): PatternDocument {
+  return {
+    ...document,
+    assemblies: document.assemblies.map((assembly) => {
+      if (assembly.id !== assemblyId) {
+        return assembly
+      }
+
+      return {
+        ...assembly,
+        origin: {
+          x: assembly.origin.x + delta.x,
+          y: assembly.origin.y + delta.y,
+        },
+      }
+    }),
+  }
+}
+
 export function navigateTo(path: string) {
   window.history.pushState({}, '', path)
   window.dispatchEvent(new PopStateEvent('popstate'))

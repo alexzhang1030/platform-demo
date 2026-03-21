@@ -1,9 +1,11 @@
 import type {
   Board,
+  BoardGroup,
   ControlPoint,
   PatternDocument,
 } from '@xtool-demo/protocol'
 
+import { getBoardOutlineWithJoints } from './board-finger-joint'
 import {
   getBoundsFromPoints,
   sampleShapePoints,
@@ -84,8 +86,8 @@ function rotateNormalizedPoints90(points: ControlPoint[], width: number) {
   }))
 }
 
-function buildFootprint(board: Board): NestingBoardFootprint {
-  const outlinePoints = sampleShapePoints(board.outline)
+function buildFootprint(board: Board, groups: BoardGroup[], allBoards: Board[]): NestingBoardFootprint {
+  const outlinePoints = sampleShapePoints(getBoardOutlineWithJoints(board, groups, allBoards))
   const bounds = getBoundsFromPoints(outlinePoints)
   const normalizedOutline = normalizePoints(outlinePoints, bounds.minX, bounds.minY)
   const normalizedHoles = board.holes.map((hole) => {
@@ -321,7 +323,7 @@ function getTrimmedSheetSize(
 }
 
 export function getBoardFootprints(document: PatternDocument) {
-  return document.boards.map(buildFootprint)
+  return document.boards.map(board => buildFootprint(board, document.boardGroups, document.boards))
 }
 
 export function buildNestingLayout(

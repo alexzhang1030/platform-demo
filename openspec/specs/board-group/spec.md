@@ -36,3 +36,19 @@ Selecting any board within a group SHALL extend selection to all boards in that 
 - **WHEN** the user selects a single board that is a member of a board group
 - **THEN** the system SHALL select all boards belonging to that group
 - **THEN** the selection state SHALL reflect the full group membership
+
+### Requirement: Board group connections produce finger joint geometry for 3D rendering
+When boards within a group are connected, the system SHALL apply `getBoardOutlineWithJoints` to derive finger joint geometry used in the 3D preview render.
+
+#### Scenario: 3D preview renders a connected board group
+- **WHEN** a board group contains two or more connected boards
+- **THEN** the 3D render pipeline SHALL call `getBoardOutlineWithJoints` for each board in the group
+- **THEN** the resulting outlines with finger joint tabs SHALL be used as the geometry source for the 3D board meshes
+
+### Requirement: Board group connections produce finger joint geometry for 2D nesting output
+When boards within a group are connected, the system SHALL apply `getBoardOutlineWithJoints` to derive finger joint geometry used in the 2D nesting layout output.
+
+#### Scenario: 2D nesting layout is generated for a connected board group
+- **WHEN** a board group with active connections is included in the 2D nesting output
+- **THEN** the nesting pipeline SHALL call `getBoardOutlineWithJoints` for each board in the group
+- **THEN** the resulting outlines with finger joint tabs SHALL be used as the shapes placed in the nesting layout
