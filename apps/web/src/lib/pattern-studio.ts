@@ -983,7 +983,28 @@ export function createBoardEnclosureFromBounds(points: ControlPoint[]): { boards
     id: getRandomId('group'),
     name: 'Sketch enclosure',
     boardIds: boards.map(b => b.id),
-    connections: [], // Connections could be calculated but not required for MVP grouping
+    connections: [
+      // Front-Left corner
+      {
+        a: { boardId: boards[0]!.id, anchor: 'left' },
+        b: { boardId: boards[2]!.id, anchor: 'left' },
+      },
+      // Front-Right corner
+      {
+        a: { boardId: boards[0]!.id, anchor: 'right' },
+        b: { boardId: boards[3]!.id, anchor: 'left' },
+      },
+      // Back-Left corner
+      {
+        a: { boardId: boards[1]!.id, anchor: 'left' },
+        b: { boardId: boards[2]!.id, anchor: 'right' },
+      },
+      // Back-Right corner
+      {
+        a: { boardId: boards[1]!.id, anchor: 'right' },
+        b: { boardId: boards[3]!.id, anchor: 'right' },
+      },
+    ],
   }
 
   return { boards, group }
