@@ -349,16 +349,6 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
     boardIds: [...group.boardIds, roofA.id, roofB.id],
     connections: [
       ...group.connections,
-      // Roof A to Wall A
-      {
-        a: { boardId: roofA.id, anchor: 'bottom' },
-        b: { boardId: wallA.id, anchor: 'top' },
-      },
-      // Roof B to Wall B
-      {
-        a: { boardId: roofB.id, anchor: 'bottom' },
-        b: { boardId: wallB.id, anchor: 'top' },
-      },
       // Peak: Roof A to Roof B
       {
         a: { boardId: roofA.id, anchor: 'top' },

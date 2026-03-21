@@ -64,7 +64,8 @@ export function classifyConnectionAngle(
 
   const cross = Math.abs(dirA.x * dirB.y - dirA.y * dirB.x)
 
-  if (cross > 0.5) {
+  // cross > 0.866 means angle is between 60 and 120 degrees
+  if (cross > 0.866) {
     return 'L-joint'
   }
 
