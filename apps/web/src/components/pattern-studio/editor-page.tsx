@@ -19,6 +19,7 @@ import {
   Grip,
   Plus,
   Minus,
+  Pen,
   Shapes,
   X,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ import {
   getUprightBoardHeight,
   getUprightBoardLength,
   hingeExtrudeBoard,
+  commitSketch,
   mapBoardColor,
   selectSingleAssembly,
   PRESET_OPTIONS,
@@ -79,7 +81,7 @@ interface InsetOffset {
 }
 
 type PipLevel = 'compact' | 'expanded' | 'fullscreen'
-type EditorTool = 'boxel-mode' | 'boxel-remove' | 'create-board' | 'select'
+type EditorTool = 'boxel-mode' | 'boxel-remove' | 'create-board' | 'pen-sketch' | 'select'
 
 interface PipLayoutState {
   level: PipLevel
@@ -415,6 +417,7 @@ export function EditorPage({
   const selectedBoard = document.boards.find(board => board.id === activeBoardId)
   const nestingResult = useMemo(() => buildNestingLayout(document), [document])
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
+  const [sketchPoints, setSketchPoints] = useState<ControlPoint[]>([])
   const [isInsetDragging, setIsInsetDragging] = useState(false)
   const [pipLayout, setPipLayout] = useState<PipLayoutState>({
     level: 'compact',
@@ -432,6 +435,7 @@ export function EditorPage({
   const isBoxelModeActive = activeTool === 'boxel-mode'
   const isBoxelRemoveModeActive = activeTool === 'boxel-remove'
   const isCreateBoardToolActive = activeTool === 'create-board'
+  const isPenSketchActive = activeTool === 'pen-sketch'
   const nestingSheets = useMemo(
     () =>
       nestingResult.sheets.map((sheet, index) => ({
@@ -600,6 +604,33 @@ export function EditorPage({
     if (filteredBoards.length === 0) {
       setIsBoardEditDialogOpen(false)
     }
+  }
+
+  const handleSketchStart = (point: ControlPoint) => {
+    setSketchPoints([point])
+  }
+
+  const handleSketchMove = (point: ControlPoint) => {
+    setSketchPoints(current => {
+      // Simple distance threshold to keep path lean (5mm)
+      const last = current.at(-1)
+      if (last && Math.hypot(point.x - last.x, point.y - last.y) < 5) {
+        return current
+      }
+      return [...current, point]
+    })
+  }
+
+  const handleSketchEnd = () => {
+    if (sketchPoints.length < 5) {
+      setSketchPoints([])
+      return
+    }
+
+    const result = commitSketch(document, sketchPoints)
+    onDocumentChange(result.document)
+    onSelectionChange(result.selection)
+    setSketchPoints([])
   }
 
   function openBoardEditDialog(boardId: string) {
@@ -930,11 +961,16 @@ export function EditorPage({
                       boxelModeEnabled={isBoxelModeActive}
                       boxelRemoveModeEnabled={isBoxelRemoveModeActive}
                       createBoardModeEnabled={isCreateBoardToolActive}
+                      sketchModeEnabled={isPenSketchActive}
+                      sketchPoints={sketchPoints}
                       document={document}
                       selection={selection}
                       onBoardEditRequest={openBoardEditDialog}
                       onSelectionChange={onSelectionChange}
                       onDocumentChange={onDocumentChange}
+                      onSketchStart={handleSketchStart}
+                      onSketchMove={handleSketchMove}
+                      onSketchEnd={handleSketchEnd}
                       onActivateCreateBoardMode={() => setActiveTool('create-board')}
                       canvasClassName="h-full min-h-[520px]"
                     />
@@ -1111,6 +1147,29 @@ export function EditorPage({
                     ? (
                         <p className="mt-1 text-[10px] text-foreground/55">
                           Create in 3D. Click to start, click again to commit. Hold Shift for free angle. Press Esc to cancel.
+                        </p>
+                      )
+                    : null}
+                  <Button
+                    variant={isPenSketchActive ? 'default' : 'outline'}
+                    size="sm"
+                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                    onClick={() => {
+                      setActiveTool(current => {
+                        if (current === 'pen-sketch') {
+                          return 'select'
+                        }
+
+                        return 'pen-sketch'
+                      })
+                    }}
+                  >
+                    {isPenSketchActive ? 'Exit pen sketch' : 'Smart Pen'}
+                  </Button>
+                  {isPenSketchActive
+                    ? (
+                        <p className="mt-1 text-[10px] text-foreground/55">
+                          Freehand draw on the ground. Closed loops convert to circles (flat) or rectangles (enclosure).
                         </p>
                       )
                     : null}

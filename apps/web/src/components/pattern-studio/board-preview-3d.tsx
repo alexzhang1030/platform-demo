@@ -64,11 +64,16 @@ interface BoardPreview3DProps {
   boxelModeEnabled?: boolean
   boxelRemoveModeEnabled?: boolean
   createBoardModeEnabled?: boolean
+  sketchModeEnabled?: boolean
+  sketchPoints?: ControlPoint[]
   document: PatternDocument
   selection: EditorSelectionState
   onBoardEditRequest?: (boardId: string) => void
   onSelectionChange: (selection: EditorSelectionState) => void
   onDocumentChange: (document: PatternDocument) => void
+  onSketchStart?: (point: ControlPoint) => void
+  onSketchMove?: (point: ControlPoint) => void
+  onSketchEnd?: () => void
   canvasClassName?: string
   onActivateCreateBoardMode?: () => void
 }
@@ -111,6 +116,7 @@ interface SceneProps extends BoardPreview3DProps {
   assemblyObjectsRef: RefObject<Map<string, THREE.Object3D>>
   controlsRef: RefObject<ComponentRef<typeof OrbitControls> | null>
   createBoardDraft: CreateBoardDraft | null
+  sketchPoints?: ControlPoint[]
   initialCameraFraming: ReturnType<typeof getCameraFraming>
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
@@ -507,12 +513,35 @@ function JointCandidateBars({ assembly }: JointCandidateBarProps) {
   })
 }
 
+function SketchPath({ points }: { points: ControlPoint[] }) {
+  const lineGeometry = useMemo(() => {
+    if (points.length < 2) {
+      return null
+    }
+    return new THREE.BufferGeometry().setFromPoints(
+      points.map(p => new THREE.Vector3(p.x, -p.y, 2)),
+    )
+  }, [points])
+
+  if (!lineGeometry) {
+    return null
+  }
+
+  return (
+    <line geometry={lineGeometry}>
+      <lineBasicMaterial color="#60a5fa" linewidth={3} />
+    </line>
+  )
+}
+
 function Scene({
   assemblyObjectsRef,
   boxelModeEnabled = false,
   boxelRemoveModeEnabled = false,
   createBoardDraft,
   createBoardModeEnabled = false,
+  sketchModeEnabled = false,
+  sketchPoints = [],
   document,
   latestDocumentRef,
   onBoardEditRequest,
@@ -521,6 +550,9 @@ function Scene({
   onCreateBoardDraftChange,
   onDocumentChange,
   onGroupStateChange,
+  onSketchStart,
+  onSketchMove,
+  onSketchEnd,
   controlsRef,
   initialCameraFraming,
   isCameraPanModifierPressed,
@@ -546,6 +578,7 @@ function Scene({
   const gridCursorPositionRef = useRef(new THREE.Vector2(0, 0))
   const raycasterRef = useRef(new THREE.Raycaster())
   const selectedObjectsRef = useRef<THREE.Object3D[]>([])
+  const isSketchingRef = useRef(false)
   const [boxelPreview, setBoxelPreview] = useState<BoxelPreviewState | null>(null)
   const [createCursorPosition, setCreateCursorPosition] = useState<CreateCursorPosition>({
     x: 0,
@@ -837,6 +870,11 @@ function Scene({
         }
       }
 
+      if (sketchModeEnabled && isSketchingRef.current && planePoint) {
+        onSketchMove?.({ x: planePoint.x, y: -planePoint.y })
+        return
+      }
+
       const heightResizeDraft = heightResizeDraftRef.current
       if (heightResizeDraft) {
         const intersection = new THREE.Vector3()
@@ -925,6 +963,10 @@ function Scene({
     }
 
     const handleWindowPointerUp = () => {
+      if (sketchModeEnabled && isSketchingRef.current) {
+        isSketchingRef.current = false
+        onSketchEnd?.()
+      }
       finishBoardDrag()
       finishAssemblyDrag()
       finishHeightResize()
@@ -1207,19 +1249,38 @@ function Scene({
     onSelectionChange(result.selection)
   }
 
+  function handleScenePointerDown(event: ThreeEvent<PointerEvent>) {
+    if (!sketchModeEnabled || isCameraPanModifierPressed) {
+      return
+    }
+
+    event.stopPropagation()
+    const planePoint = getPlaneIntersection(event)
+    if (planePoint) {
+      isSketchingRef.current = true
+      onSketchStart?.({ x: planePoint.x, y: -planePoint.y })
+
+      const controls = controlsRef.current
+      if (controls) {
+        controls.enabled = false
+      }
+    }
+  }
+
   return (
     <>
       <color attach="background" args={[resolvedTheme === 'dark' ? '#0f131a' : '#ddd4c1']} />
       <WebGPUGrid cursorPositionRef={gridCursorPositionRef} resolvedTheme={resolvedTheme} />
       <SelectionOutline selectedObjectsRef={selectedObjectsRef} />
       <PatternStudioLights resolvedTheme={resolvedTheme} />
-      {isCreateModeActive
+      {isCreateModeActive || sketchModeEnabled
         ? (
           <>
+            <SketchPath points={sketchPoints} />
             <mesh
               position={[0, 0, 0]}
-              onPointerDown={handleCreateBoardPointerDown}
-              onPointerMove={handleCreateBoardPointerMove}
+              onPointerDown={sketchModeEnabled ? handleScenePointerDown : handleCreateBoardPointerDown}
+              onPointerMove={sketchModeEnabled ? undefined : handleCreateBoardPointerMove}
             >
               <planeGeometry args={[groundPlaneSize, groundPlaneSize]} />
               <meshBasicMaterial opacity={0} transparent />
@@ -1405,11 +1466,16 @@ export function BoardPreview3D({
   boxelModeEnabled = false,
   boxelRemoveModeEnabled = false,
   createBoardModeEnabled = false,
+  sketchModeEnabled = false,
+  sketchPoints = [],
   document,
   selection,
   onBoardEditRequest,
   onSelectionChange,
   onDocumentChange,
+  onSketchStart,
+  onSketchMove,
+  onSketchEnd,
   canvasClassName,
   onActivateCreateBoardMode,
 }: BoardPreview3DProps) {
@@ -1549,6 +1615,8 @@ export function BoardPreview3D({
             boxelRemoveModeEnabled={boxelRemoveModeEnabled}
             createBoardDraft={createBoardDraft}
             createBoardModeEnabled={createBoardModeEnabled}
+            sketchModeEnabled={sketchModeEnabled}
+            sketchPoints={sketchPoints}
             document={document}
             latestDocumentRef={latestDocumentRef}
             localCreateModeActive={localCreateModeActive}
@@ -1561,6 +1629,9 @@ export function BoardPreview3D({
             onCreateBoardDraftChange={setCreateBoardDraft}
             onDocumentChange={onDocumentChange}
             onGroupStateChange={setActiveGroupId}
+            onSketchStart={onSketchStart}
+            onSketchMove={onSketchMove}
+            onSketchEnd={onSketchEnd}
             controlsRef={controlsRef}
             initialCameraFraming={initialCameraFraming}
             isCameraPanModifierPressed={isCameraPanModifierPressed}
@@ -1570,7 +1641,15 @@ export function BoardPreview3D({
         </Canvas>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 border border-border/60 bg-background/72 px-2 py-1 text-[10px] font-medium tracking-[0.01em] text-foreground/72 backdrop-blur-md">
-        {boxelRemoveModeEnabled
+        {sketchModeEnabled
+          ? (
+            <>
+              <span>Sketch freehand on ground</span>
+              <span className="mx-1.5 text-foreground/35">/</span>
+              <span>Closed loops auto-convert</span>
+            </>
+          )
+          : boxelRemoveModeEnabled
           ? (
             <>
               <span>Click boxel to remove</span>

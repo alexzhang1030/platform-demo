@@ -10,11 +10,14 @@ import type {
 import {
   appendBoxelCellAboveColumn,
   buildJointCandidates,
+  calculatePathArea,
+  calculatePathPerimeter,
   createDovetailSocket,
   createUprightBoardOutline,
   findAnchorConnections,
   findFaceAdjacentAssemblies,
   findClosestUprightBoardMoveSnap,
+  getBoundsFromPoints,
   getUprightBoardHeight,
   getUprightBoardLength,
   mergeBoardsThroughConnection,
@@ -867,6 +870,164 @@ export function replacePointAt(
   return points.map((point, currentIndex) =>
     currentIndex === index ? nextPoint : point,
   )
+}
+
+export type SketchClassification = 'circle' | 'rectangle' | 'unknown'
+
+export function classifySketchPath(points: ControlPoint[]): SketchClassification {
+  if (points.length < 5) {
+    return 'unknown'
+  }
+
+  const area = calculatePathArea(points)
+  const perimeter = calculatePathPerimeter(points)
+  const bounds = getBoundsFromPoints(points)
+  const boundsArea = bounds.width * bounds.height
+
+  if (boundsArea === 0 || perimeter === 0) {
+    return 'unknown'
+  }
+
+  const rectangularity = area / boundsArea
+  const circularity = (4 * Math.PI * area) / (perimeter * perimeter)
+
+  if (circularity > 0.75) {
+    return 'circle'
+  }
+
+  if (rectangularity > 0.75) {
+    return 'rectangle'
+  }
+
+  return 'unknown'
+}
+
+export function createCircularBoardFromBounds(points: ControlPoint[]): Board {
+  const bounds = getBoundsFromPoints(points)
+  const radius = (bounds.width + bounds.height) / 4
+  const centerX = bounds.minX + bounds.width / 2
+  const centerY = bounds.minY + bounds.height / 2
+
+  return {
+    id: getRandomId('board'),
+    name: 'Circular panel',
+    thickness: 18,
+    material: 'birch-ply',
+    transform: {
+      x: centerX - radius,
+      y: centerY - radius,
+      rotation: 0,
+      orientation: 'flat',
+    },
+    outline: createCircleShape(radius),
+    holes: [],
+  }
+}
+
+export function createBoardEnclosureFromBounds(points: ControlPoint[]): { boards: Board[]; group: BoardGroup } {
+  const bounds = getBoundsFromPoints(points)
+  const { minX, maxX, minY, maxY } = bounds
+  const thickness = 18
+  const height = CREATE_BOARD_DEFAULT_HEIGHT
+
+  const boards: Board[] = [
+    // Front
+    {
+      id: getRandomId('board'),
+      name: 'Front wall',
+      thickness,
+      material: 'birch-ply',
+      transform: { x: minX, y: minY, rotation: 0, orientation: 'upright' },
+      outline: createUprightBoardOutline(maxX - minX, height, null),
+      holes: [],
+    },
+    // Back
+    {
+      id: getRandomId('board'),
+      name: 'Back wall',
+      thickness,
+      material: 'birch-ply',
+      transform: { x: minX, y: maxY, rotation: 0, orientation: 'upright' },
+      outline: createUprightBoardOutline(maxX - minX, height, null),
+      holes: [],
+    },
+    // Left
+    {
+      id: getRandomId('board'),
+      name: 'Left wall',
+      thickness,
+      material: 'birch-ply',
+      transform: { x: minX, y: minY, rotation: 90, orientation: 'upright' },
+      outline: createUprightBoardOutline(maxY - minY, height, null),
+      holes: [],
+    },
+    // Right
+    {
+      id: getRandomId('board'),
+      name: 'Right wall',
+      thickness,
+      material: 'birch-ply',
+      transform: { x: maxX, y: minY, rotation: 90, orientation: 'upright' },
+      outline: createUprightBoardOutline(maxY - minY, height, null),
+      holes: [],
+    },
+  ]
+
+  const group: BoardGroup = {
+    id: getRandomId('group'),
+    name: 'Sketch enclosure',
+    boardIds: boards.map(b => b.id),
+    connections: [], // Connections could be calculated but not required for MVP grouping
+  }
+
+  return { boards, group }
+}
+
+export function commitSketch(
+  document: PatternDocument,
+  points: ControlPoint[],
+): { document: PatternDocument; selection: EditorSelectionState } {
+  const classification = classifySketchPath(points)
+
+  if (classification === 'circle') {
+    const nextBoard = createCircularBoardFromBounds(points)
+    const nextDocument = updateDocumentTimestamp({
+      ...document,
+      boards: [...document.boards, nextBoard],
+    })
+    return {
+      document: nextDocument,
+      selection: selectSingleBoard(nextBoard.id),
+    }
+  }
+
+  if (classification === 'rectangle') {
+    const { boards: nextBoards, group } = createBoardEnclosureFromBounds(points)
+    const nextDocument = updateDocumentTimestamp({
+      ...document,
+      boards: [...document.boards, ...nextBoards],
+      boardGroups: [...document.boardGroups, group],
+    })
+    return {
+      document: nextDocument,
+      selection: {
+        activeAssemblyId: '',
+        activeBoardId: nextBoards[0]?.id ?? '',
+        selectedAssemblyIds: [],
+        selectedBoardIds: nextBoards.map(b => b.id),
+      },
+    }
+  }
+
+  return {
+    document,
+    selection: {
+      activeAssemblyId: '',
+      activeBoardId: '',
+      selectedAssemblyIds: [],
+      selectedBoardIds: [],
+    },
+  }
 }
 
 export function updateBoardOutlinePoints(board: Board, points: ControlPoint[]): Board {

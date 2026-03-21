@@ -198,6 +198,40 @@ export function getDocumentBounds(document: PatternDocument): Bounds {
   return getBoundsFromPoints(points)
 }
 
+export function calculatePathArea(points: ControlPoint[]): number {
+  if (points.length < 3) {
+    return 0
+  }
+
+  let area = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const p1 = points[index]
+    const p2 = points[(index + 1) % points.length]
+    if (p1 && p2) {
+      area += p1.x * p2.y - p2.x * p1.y
+    }
+  }
+
+  return Math.abs(area) / 2
+}
+
+export function calculatePathPerimeter(points: ControlPoint[]): number {
+  if (points.length < 2) {
+    return 0
+  }
+
+  let perimeter = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const p1 = points[index]
+    const p2 = points[(index + 1) % points.length]
+    if (p1 && p2) {
+      perimeter += Math.hypot(p2.x - p1.x, p2.y - p1.y)
+    }
+  }
+
+  return perimeter
+}
+
 export function buildSvgPath(shape: Path2DShape): string {
   const firstSegment = shape.segments[0]
   const firstPoint = firstSegment?.points[0]
