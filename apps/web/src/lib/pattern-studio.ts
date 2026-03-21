@@ -279,12 +279,12 @@ const roofLength = Math.max(lengthA, lengthB)
 // Span is the distance between the two walls
 const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
 
-// For an equilateral triangle roof:
-// - Pitch is 60 degrees.
-// - The two roof sides and the base (span) are all equal length.
-// - So each roof panel width = span.
-const pitchDeg = 60
-const roofPanelWidth = span
+// For a 30-degree pitch roof:
+// - Pitch is 30 degrees.
+// - L = (Span / 2) / cos(30)
+const pitchDeg = 30
+const pitchRad = (pitchDeg * Math.PI) / 180
+const roofPanelWidth = (span / 2) / Math.cos(pitchRad)
 
   // One panel will point inward based on the group centroid
   const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }

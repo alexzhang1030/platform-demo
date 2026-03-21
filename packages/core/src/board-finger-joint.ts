@@ -310,8 +310,10 @@ export function getBoardOutlineWithJoints(
 
     const dimension = (myAnchor === 'left' || myAnchor === 'right') ? height : length
     const { fingerCount, fingerWidth } = computeFingerPattern(dimension, board.thickness)
-    // The 'a' endpoint board always starts with a tab
-    const startWithTab = isA
+    
+    // To keep wall heights original, walls MUST be socket boards (subtractive).
+    // Connections on 'top' or 'bottom' are treated as subtractive sockets for the wall.
+    const startWithTab = (myAnchor === 'top' || myAnchor === 'bottom') ? false : isA
 
     const edgeOptions: EdgeOptions = { depth, fingerCount, fingerWidth, startWithTab }
 
