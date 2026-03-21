@@ -28,6 +28,9 @@ import { useTheme } from '@/components/theme-provider'
 import {
   createBoardFromPreset,
   evaluateBoardGroupsAfterRemove,
+  getUprightBoardHeight,
+  getUprightBoardLength,
+  hingeExtrudeBoard,
   mapBoardColor,
   selectSingleAssembly,
   PRESET_OPTIONS,
@@ -66,6 +69,7 @@ interface NumberInputProps {
 
 interface BoardEditorContentProps {
   board: Board | null
+  document: PatternDocument
   onBoardChange: (board: Board) => void
 }
 
@@ -230,6 +234,7 @@ function NumberInput({ value, onChange }: NumberInputProps) {
 
 function BoardEditorContent({
   board,
+  document,
   onBoardChange,
 }: BoardEditorContentProps) {
   if (!board) {
@@ -320,6 +325,66 @@ function BoardEditorContent({
           className="h-8 w-full border border-border bg-background px-2.5 text-[12px] outline-none focus:border-foreground"
         />
       </Field>
+
+      {(board.transform.orientation === 'upright' || board.transform.orientation === 'hinged') && (
+        <Field label={`Pitch: ${board.transform.pitch ?? (board.transform.orientation === 'upright' ? 90 : 0)}°`}>
+          <input
+            type="range"
+            min="0"
+            max="180"
+            step="1"
+            value={board.transform.pitch ?? (board.transform.orientation === 'upright' ? 90 : 0)}
+            onChange={(event) => {
+              const pitch = Number(event.target.value)
+              onBoardChange({
+                ...board,
+                transform: {
+                  ...board.transform,
+                  orientation: 'hinged',
+                  pitch,
+                },
+              })
+            }}
+            className="h-8 w-full accent-foreground"
+          />
+        </Field>
+      )}
+
+      {board.transform.orientation === 'hinged' && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-full px-2 text-[11px]"
+          onClick={() => {
+            onBoardChange({
+              ...board,
+              transform: {
+                ...board.transform,
+                flipPitch: !board.transform.flipPitch,
+              },
+            })
+          }}
+        >
+          Flip Direction
+        </Button>
+      )}
+
+      {board.transform.orientation === 'upright' && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-full px-2 text-[11px]"
+          onClick={() => {
+            const nextBoard = hingeExtrudeBoard(board, document)
+            if (nextBoard) {
+              onBoardChange(nextBoard)
+            }
+          }}
+        >
+          Hinge Extrude
+        </Button>
+      )}
+
       <div className="flex items-center gap-1.5 border border-border bg-muted/55 px-2.5 py-1.5 text-[10px] text-foreground/55">
         <Shapes className="size-3" />
         <span>
@@ -458,13 +523,22 @@ export function EditorPage({
   }, [isBoardEditDialogOpen])
 
   function updateBoard(nextBoard: Board) {
+    const isNew = !document.boards.some(board => board.id === nextBoard.id)
+
     const nextDocument = updateDocumentTimestamp({
       ...document,
-      boards: document.boards.map(board =>
-        board.id === nextBoard.id ? nextBoard : board,
-      ),
+      boards: isNew
+        ? [...document.boards, nextBoard]
+        : document.boards.map(board =>
+            board.id === nextBoard.id ? nextBoard : board,
+          ),
     })
+
     onDocumentChange(nextDocument)
+
+    if (isNew) {
+      onSelectionChange(selectSingleBoard(nextBoard.id))
+    }
   }
 
   function addBoard(presetId: (typeof PRESET_OPTIONS)[number]['id']) {
@@ -1076,7 +1150,7 @@ export function EditorPage({
 
               <div className="max-h-[min(34vh,360px)] lg:max-h-[min(58vh,620px)]">
                 {selectedBoard
-                  ? <BoardEditorContent board={selectedBoard} onBoardChange={updateBoard} />
+                  ? <BoardEditorContent board={selectedBoard} document={document} onBoardChange={updateBoard} />
                   : (
                       <div className="border border-border bg-card px-3 py-3 text-[12px] text-foreground/60">
                         {selectedAssembly

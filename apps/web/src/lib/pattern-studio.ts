@@ -23,6 +23,11 @@ import {
   splitAssemblyIntoConnectedComponents,
   splitBoardGroupAfterRemoval,
 } from '@xtool-demo/core'
+
+export {
+  getUprightBoardHeight,
+  getUprightBoardLength,
+} from '@xtool-demo/core'
 import {
   createCircleShape,
   createRectangleShape,
@@ -213,6 +218,70 @@ export function commitStandingBoardFromSpan(
   span: BoardSpan,
 ) {
   return buildStandingBoard(span)
+}
+
+export function hingeExtrudeBoard(parentBoard: Board, document?: PatternDocument): Board | null {
+  const height = getUprightBoardHeight(parentBoard)
+  const length = getUprightBoardLength(parentBoard)
+
+  if (!height || !length) {
+    return null
+  }
+
+  let flipPitch = false
+
+  // Smart direction detection: if part of a group, point towards centroid
+  if (document) {
+    const group = getBoardGroupForBoard(document.boardGroups, parentBoard.id)
+    if (group && group.boardIds.length > 2) {
+      const groupBoards = document.boards.filter(b => group.boardIds.includes(b.id))
+      const centroid = { x: 0, y: 0 }
+      groupBoards.forEach((b) => {
+        centroid.x += b.transform.x
+        centroid.y += b.transform.y
+      })
+      centroid.x /= groupBoards.length
+      centroid.y /= groupBoards.length
+
+      // Vector from board start to centroid
+      const toCentroid = {
+        x: centroid.x - parentBoard.transform.x,
+        y: centroid.y - parentBoard.transform.y,
+      }
+
+      // Board rotation in radians
+      const rad = (parentBoard.transform.rotation * Math.PI) / 180
+      // Normal vector pointing "inward" (90 deg counter-clockwise from baseline)
+      const normal = {
+        x: -Math.sin(rad),
+        y: Math.cos(rad),
+      }
+
+      // Dot product to check if normal points towards centroid
+      const dot = toCentroid.x * normal.x + toCentroid.y * normal.y
+      if (dot < 0) {
+        flipPitch = true
+      }
+    }
+  }
+
+  return {
+    id: getRandomId('board'),
+    name: 'Hinged board',
+    thickness: parentBoard.thickness,
+    material: parentBoard.material,
+    transform: {
+      x: parentBoard.transform.x,
+      y: parentBoard.transform.y,
+      rotation: parentBoard.transform.rotation,
+      orientation: 'hinged',
+      pitch: 0,
+      z: height,
+      flipPitch,
+    },
+    outline: createRectangleShape(length, height),
+    holes: [],
+  }
 }
 
 export function findBoardMoveConnection(

@@ -32,7 +32,10 @@ export interface BoardTransform {
   x: number
   y: number
   rotation: number
-  orientation?: 'flat' | 'upright'
+  orientation?: 'flat' | 'upright' | 'hinged'
+  pitch?: number
+  z?: number
+  flipPitch?: boolean
 }
 
 export interface Board {
@@ -105,7 +108,10 @@ const boardTransformSchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.number().finite(),
-  orientation: z.enum(['flat', 'upright']).optional(),
+  orientation: z.enum(['flat', 'upright', 'hinged']).optional(),
+  pitch: z.number().finite().optional(),
+  z: z.number().finite().optional(),
+  flipPitch: z.boolean().optional(),
 })
 
 const boardSchema = z.object({

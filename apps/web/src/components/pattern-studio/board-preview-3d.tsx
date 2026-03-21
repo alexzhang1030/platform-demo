@@ -354,13 +354,14 @@ function BoardMesh({
   const geometry = useMemo(() => {
     const outline = getBoardOutlineWithJoints(board, boardGroups, allBoards)
     const outlinePoints = sampleShapePoints(outline)
-    const shape = board.transform.orientation === 'upright'
+    const isUpright = board.transform.orientation === 'upright' || board.transform.orientation === 'hinged'
+    const shape = isUpright
       ? toUprightBoardShape(outlinePoints)
       : toFlatBoardShape(outlinePoints)
 
     for (const hole of board.holes) {
       const holePoints = sampleShapePoints(hole)
-      const holePath = board.transform.orientation === 'upright'
+      const holePath = isUpright
         ? toUprightBoardShape(holePoints)
         : toFlatBoardShape(holePoints)
       shape.holes.push(holePath)
@@ -372,7 +373,7 @@ function BoardMesh({
       steps: 1,
     })
 
-    if (board.transform.orientation === 'upright') {
+    if (isUpright) {
       nextGeometry.translate(0, 0, -board.thickness / 2)
     }
 
@@ -386,9 +387,24 @@ function BoardMesh({
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
+  const meshRotation: [number, number, number] = useMemo(() => {
+    if (board.transform.orientation === 'upright') {
+      return [Math.PI / 2, 0, 0]
+    }
+
+    if (board.transform.orientation === 'hinged') {
+      const pitch = board.transform.pitch ?? 0
+      const flip = board.transform.flipPitch ? Math.PI : 0
+      // Pitch rotation around X axis (hinge), with optional 180deg flip around board's Z
+      return [Math.PI / 2 - (pitch * Math.PI) / 180, flip, 0]
+    }
+
+    return [0, 0, 0]
+  }, [board.transform.orientation, board.transform.pitch, board.transform.flipPitch])
+
   return (
     <group
-      position={[board.transform.x, -board.transform.y, 0]}
+      position={[board.transform.x, -board.transform.y, board.transform.z ?? 0]}
       rotation={[0, 0, (-board.transform.rotation * Math.PI) / 180]}
     >
       <mesh
@@ -398,7 +414,7 @@ function BoardMesh({
           onMeshChange(board.id, object)
         }}
         geometry={geometry}
-        rotation={board.transform.orientation === 'upright' ? [Math.PI / 2, 0, 0] : [0, 0, 0]}
+        rotation={meshRotation}
         onDoubleClick={onDoubleClick ? event => onDoubleClick(event, board) : undefined}
         onPointerDown={onPointerDown ? event => onPointerDown(event, board) : undefined}
         onPointerMove={onPointerMove}
