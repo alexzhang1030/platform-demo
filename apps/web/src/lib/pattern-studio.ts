@@ -280,14 +280,35 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
   
   // Span is the distance between the two walls
   const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
+  
+  // Account for board thickness if they are anchored center-to-center
+  // If we want the roof panels to meet exactly, and they start at the centers of walls
+  // with thickness T, the actual gap between inner faces is span - thickness.
+  // For MVP, we use center-to-center span.
+  
   const pitchDeg = 45
   const pitchRad = (pitchDeg * Math.PI) / 180
   
   // Width of each roof panel so they meet in the middle
+  // L = (Span/2) / cos(Pitch)
   const roofPanelWidth = (span / 2) / Math.cos(pitchRad)
 
-  // We need to orient them so they tilt towards each other.
-  // We'll use the walls' transforms as a base.
+  // One panel will point inward based on the group centroid
+  const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }
+  
+  const checkFlip = (board: Board) => {
+    // Standard normal points "outward" from origin (0,0) towards +Y
+    const rad = (board.transform.rotation * Math.PI) / 180
+    const normal = { x: -Math.sin(rad), y: Math.cos(rad) }
+    
+    // Vector from board origin to centroid
+    const toCentroid = { x: centroid.x - board.transform.x, y: centroid.y - board.transform.y }
+    const dot = toCentroid.x * normal.x + toCentroid.y * normal.y
+    
+    // If dot < 0, the inward direction is -Y, so we need to flip
+    return dot < 0
+  }
+
   const roofA: Board = {
     id: getRandomId('board'),
     name: 'Roof panel A',
@@ -300,11 +321,12 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
       orientation: 'hinged',
       pitch: pitchDeg,
       z: zElevation,
-      flipPitch: false, // Default inward
+      flipPitch: false,
     },
     outline: createRectangleShape(roofLength, roofPanelWidth),
     holes: [],
   }
+  roofA.transform.flipPitch = checkFlip(roofA)
 
   const roofB: Board = {
     id: getRandomId('board'),
@@ -318,24 +340,11 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
       orientation: 'hinged',
       pitch: pitchDeg,
       z: zElevation,
-      flipPitch: false, // Default inward
+      flipPitch: false,
     },
     outline: createRectangleShape(roofLength, roofPanelWidth),
     holes: [],
   }
-
-  // Use the same dot-product logic as hingeExtrudeBoard to ensure they point inward
-  const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }
-  
-  const checkFlip = (board: Board) => {
-    const toCentroid = { x: centroid.x - board.transform.x, y: centroid.y - board.transform.y }
-    const rad = (board.transform.rotation * Math.PI) / 180
-    const normal = { x: -Math.sin(rad), y: Math.cos(rad) }
-    const dot = toCentroid.x * normal.x + toCentroid.y * normal.y
-    return dot < 0
-  }
-
-  roofA.transform.flipPitch = checkFlip(roofA)
   roofB.transform.flipPitch = checkFlip(roofB)
 
   const updatedGroup = {

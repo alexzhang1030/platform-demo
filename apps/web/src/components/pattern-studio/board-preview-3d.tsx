@@ -314,12 +314,14 @@ function getCameraFraming(bounds: BoardWorkspaceBounds) {
   }
 }
 
-function toFlatBoardShape(points: ControlPoint[]) {
+function toFlatBoardShape(points: ControlPoint[], flipY = false) {
   const shape = new THREE.Shape()
 
   points.forEach((point, index) => {
     const x = point.x
-    const y = -point.y
+    // In document space, Y increases downwards. In ThreeJS XY plane, Y increases upwards.
+    // So default is -point.y. Flipping it makes it +point.y.
+    const y = flipY ? point.y : -point.y
 
     if (index === 0) {
       shape.moveTo(x, y)
@@ -333,16 +335,21 @@ function toFlatBoardShape(points: ControlPoint[]) {
   return shape
 }
 
-function toUprightBoardShape(points: ControlPoint[]) {
+function toUprightBoardShape(points: ControlPoint[], flipY = false) {
   const shape = new THREE.Shape()
 
   points.forEach((point, index) => {
+    const x = point.x
+    // For upright boards, the 2D 'y' is the Z-height in 3D.
+    // Flipping the hinge direction means extending in negative Y (local).
+    const y = flipY ? -point.y : point.y
+
     if (index === 0) {
-      shape.moveTo(point.x, point.y)
+      shape.moveTo(x, y)
       return
     }
 
-    shape.lineTo(point.x, point.y)
+    shape.lineTo(x, y)
   })
 
   shape.closePath()
@@ -369,15 +376,16 @@ function BoardMesh({
     }
 
     const isUpright = board.transform.orientation === 'upright' || board.transform.orientation === 'hinged'
+    const flipY = !!board.transform.flipPitch
     const shape = isUpright
-      ? toUprightBoardShape(outlinePoints)
-      : toFlatBoardShape(outlinePoints)
+      ? toUprightBoardShape(outlinePoints, flipY)
+      : toFlatBoardShape(outlinePoints, flipY)
 
     for (const hole of board.holes) {
       const holePoints = sampleShapePoints(hole)
       const holePath = isUpright
-        ? toUprightBoardShape(holePoints)
-        : toFlatBoardShape(holePoints)
+        ? toUprightBoardShape(holePoints, flipY)
+        : toFlatBoardShape(holePoints, flipY)
       shape.holes.push(holePath)
     }
 
@@ -408,13 +416,12 @@ function BoardMesh({
 
     if (board.transform.orientation === 'hinged') {
       const pitch = board.transform.pitch ?? 0
-      const flip = board.transform.flipPitch ? Math.PI : 0
-      // Pitch rotation around X axis (hinge), with optional 180deg flip around board's Z
-      return [Math.PI / 2 - (pitch * Math.PI) / 180, flip, 0]
+      // Pitch is relative to flat (0deg = flat, 90deg = upright)
+      return [(pitch * Math.PI) / 180, 0, 0]
     }
 
     return [0, 0, 0]
-  }, [board.transform.orientation, board.transform.pitch, board.transform.flipPitch])
+  }, [board.transform.orientation, board.transform.pitch])
 
   useEffect(() => {
     if (!geometry) {
