@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '@/components/theme-provider'
 import {
   createBoardFromPreset,
+  evaluateBoardGroupsAfterRemove,
   mapBoardColor,
   selectSingleAssembly,
   PRESET_OPTIONS,
@@ -496,11 +497,15 @@ export function EditorPage({
     const filteredAssemblies = document.assemblies.filter(
       assembly => !selectedAssemblyIdSet.has(assembly.id),
     )
-    const nextDocument = updateDocumentTimestamp({
+    let withoutBoards: typeof document = {
       ...document,
       assemblies: filteredAssemblies,
       boards: filteredBoards,
-    })
+    }
+    for (const boardId of selectedBoardIds) {
+      withoutBoards = evaluateBoardGroupsAfterRemove(withoutBoards, boardId)
+    }
+    const nextDocument = updateDocumentTimestamp(withoutBoards)
     onDocumentChange(nextDocument)
 
     const nextActiveAssembly = filteredAssemblies[0]

@@ -46,6 +46,7 @@ The system SHALL commit a valid board object rather than a wall-like centerline 
 - **THEN** the committed board SHALL have a closed outline, transform, and default thickness suitable for immediate editing
 - **THEN** the committed board SHALL be aligned to the drawn 3D span using the tool's default board depth
 - **THEN** the new board SHALL become the active selection
+- **THEN** if the committed board's anchor contacts an existing board's anchor, the new board SHALL join the same board group as that existing board
 
 ### Requirement: Create-board tool does not conflict with normal 3D interaction
 The system SHALL prevent normal board drag/selection from stealing left-click create gestures while create mode is active.
@@ -72,11 +73,10 @@ The system SHALL allow the 3D create-board tool to snap to existing upright boar
 - **THEN** the cursor SHALL snap to the closest valid connection point on that board
 - **THEN** preview and commit SHALL use that snapped point consistently
 
-### Requirement: Snapped connections generate dovetail geometry
-The system SHALL write a dovetail-style connection into the board geometry when create-board snaps to an existing upright board.
+### Requirement: Committed board anchor contacts an existing board anchor
+The system SHALL detect when a newly committed board's anchor is in proximity to an anchor on an existing board and record that contact.
 
-#### Scenario: User commits a snapped board
-- **WHEN** the user confirms a create span whose start or end snaps to an existing upright board
-- **THEN** the new board outline SHALL include a dovetail tab on the snapped side
-- **THEN** the existing upright board SHALL gain a matching dovetail socket hole at the snapped location
-- **THEN** the resulting geometry SHALL be valid for both 3D preview and 2D nesting output
+#### Scenario: Committed board anchor contacts an existing board anchor
+- **WHEN** the user confirms a board whose anchor is within proximity threshold of an anchor on an existing board
+- **THEN** the system SHALL detect that anchor pair as a proximity contact
+- **THEN** the proximity contact SHALL be recorded and made available for downstream processing (such as group joining or joint generation)

@@ -6,6 +6,7 @@ import type {
 } from '@xtool-demo/protocol'
 import { buildBoxelAssemblyBounds } from './boxel'
 
+export * from './board-group'
 export * from './boxel'
 export * from './nesting'
 export * from './upright-board'

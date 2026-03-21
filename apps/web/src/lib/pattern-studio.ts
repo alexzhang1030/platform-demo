@@ -1,5 +1,6 @@
 import type {
   Board,
+  BoardGroup,
   BoxelAssembly,
   BoxelCell,
   ControlPoint,
@@ -11,13 +12,16 @@ import {
   buildJointCandidates,
   createDovetailSocket,
   createUprightBoardOutline,
+  findAnchorConnections,
   findFaceAdjacentAssemblies,
   findClosestUprightBoardMoveSnap,
   getUprightBoardHeight,
   getUprightBoardLength,
+  mergeBoardsThroughConnection,
   mergeAssembliesThroughWorldCell,
   normalizeUprightBoardSpan,
   splitAssemblyIntoConnectedComponents,
+  splitBoardGroupAfterRemoval,
 } from '@xtool-demo/core'
 import {
   createCircleShape,
@@ -789,5 +793,50 @@ export function updateBoardOutlinePoints(board: Board, points: ControlPoint[]): 
       closed: true,
       segments: nextSegments,
     },
+  }
+}
+
+export const BOARD_ANCHOR_SNAP_THRESHOLD = CREATE_BOARD_GRID_SIZE
+
+export function getBoardGroupForBoard(
+  groups: BoardGroup[],
+  boardId: string,
+): BoardGroup | null {
+  return groups.find(group => group.boardIds.includes(boardId)) ?? null
+}
+
+export function evaluateBoardGroupsAfterAdd(
+  document: PatternDocument,
+  addedBoardId: string,
+  threshold = BOARD_ANCHOR_SNAP_THRESHOLD,
+): PatternDocument {
+  const connections = findAnchorConnections(document.boards, threshold)
+  const addedBoardConnections = connections.filter(
+    connection =>
+      connection.a.boardId === addedBoardId
+      || connection.b.boardId === addedBoardId,
+  )
+
+  let boardGroups = document.boardGroups
+
+  for (const connection of addedBoardConnections) {
+    boardGroups = mergeBoardsThroughConnection(boardGroups, connection, addedBoardId)
+  }
+
+  return {
+    ...document,
+    boardGroups,
+  }
+}
+
+export function evaluateBoardGroupsAfterRemove(
+  document: PatternDocument,
+  removedBoardId: string,
+): PatternDocument {
+  const boardGroups = splitBoardGroupAfterRemoval(document.boardGroups, removedBoardId)
+
+  return {
+    ...document,
+    boardGroups,
   }
 }

@@ -53,11 +53,31 @@ export interface BoxelAssembly {
   cells: BoxelCell[]
 }
 
+export type BoardAnchorSide = 'top' | 'left' | 'right' | 'bottom'
+
+export interface BoardAnchorEndpoint {
+  boardId: string
+  anchor: BoardAnchorSide
+}
+
+export interface BoardConnection {
+  a: BoardAnchorEndpoint
+  b: BoardAnchorEndpoint
+}
+
+export interface BoardGroup {
+  id: string
+  name: string
+  boardIds: string[]
+  connections: BoardConnection[]
+}
+
 export interface PatternDocument {
   version: '1.0'
   metadata: PatternMetadata
   boards: Board[]
   assemblies: BoxelAssembly[]
+  boardGroups: BoardGroup[]
 }
 
 const pointSchema = z.object({
@@ -106,6 +126,25 @@ const boxelAssemblySchema = z.object({
   cells: z.array(boxelCellSchema),
 })
 
+const boardAnchorSideSchema = z.enum(['top', 'left', 'right', 'bottom'])
+
+const boardAnchorEndpointSchema = z.object({
+  boardId: z.string().min(1),
+  anchor: boardAnchorSideSchema,
+})
+
+const boardConnectionSchema = z.object({
+  a: boardAnchorEndpointSchema,
+  b: boardAnchorEndpointSchema,
+})
+
+const boardGroupSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  boardIds: z.array(z.string().min(1)),
+  connections: z.array(boardConnectionSchema),
+})
+
 export const patternDocumentSchema = z.object({
   version: z.literal('1.0'),
   metadata: z.object({
@@ -116,6 +155,7 @@ export const patternDocumentSchema = z.object({
   }),
   boards: z.array(boardSchema),
   assemblies: z.array(boxelAssemblySchema).default([]),
+  boardGroups: z.array(boardGroupSchema).default([]),
 })
 
 export interface PatternParseResult {
@@ -236,6 +276,7 @@ export function createDefaultPatternDocument(): PatternDocument {
     },
     boards: [],
     assemblies: [],
+    boardGroups: [],
   }
 }
 

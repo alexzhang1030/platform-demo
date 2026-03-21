@@ -1,6 +1,7 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import type {
   Board,
+  BoardConnection,
   BoxelAssembly,
   ControlPoint,
   PatternDocument,
@@ -15,10 +16,15 @@ import {
 import { Canvas, useThree } from '@react-three/fiber'
 import {
   buildBoxelAssemblyBounds,
+  findAnchorConnections,
+  findBoardAnchorMoveSnap,
+  getBoardAnchorPositions,
+  getBoardAnchorPositions3D,
   getBoxelCellWorldPosition,
   getBoxelColumnHeight,
   getBoardGroundFootprint,
   getUprightBoardHeight,
+  mergeBoardsThroughConnection,
   sampleShapePoints,
 } from '@xtool-demo/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -28,18 +34,16 @@ import { useTheme } from '@/components/theme-provider'
 import {
   CREATE_BOARD_GRID_SIZE,
   commitBoxelAtColumn,
+  evaluateBoardGroupsAfterAdd,
   getAssemblyJointCandidates,
-  applyBoardMoveConnection,
-  buildBoardMoveConnectionPreview,
   commitStandingBoardFromSpan,
   createStandingBoardPreview,
-  findBoardMoveConnection,
+  getBoardGroupForBoard,
   moveBoardsByDelta,
-  restoreBoardGeometry,
   removeBoxelFromAssembly,
   selectSingleAssembly,
   selectSingleBoard,
-  snapshotBoardGeometry,
+  BOARD_ANCHOR_SNAP_THRESHOLD,
   toggleAssemblySelection,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
@@ -94,11 +98,8 @@ interface BoxelAssemblyMeshProps {
 
 interface SceneProps extends BoardPreview3DProps {
   assemblyObjectsRef: RefObject<Map<string, THREE.Object3D>>
-  boardGroupRef: RefObject<Map<string, BoardGroupRecord>>
-  boardToGroupRef: RefObject<Map<string, string>>
   controlsRef: RefObject<ComponentRef<typeof OrbitControls> | null>
   createBoardDraft: CreateBoardDraft | null
-  groupCounterRef: RefObject<number>
   initialCameraFraming: ReturnType<typeof getCameraFraming>
   isCameraPanModifierPressed: boolean
   isCreateBoardAngleSnapDisabled: boolean
@@ -112,15 +113,9 @@ interface SceneProps extends BoardPreview3DProps {
 interface DragState {
   document: PatternDocument
   movingBoardId: string
-  pendingConnection: ReturnType<typeof findBoardMoveConnection>
+  pendingSnap: ReturnType<typeof findBoardAnchorMoveSnap>
   selectedBoardIds: string[]
   startPoint: THREE.Vector3
-}
-
-interface BoardGroupRecord {
-  boardIds: string[]
-  geometrySnapshots: ReturnType<typeof snapshotBoardGeometry>[]
-  id: string
 }
 
 interface BoardWorkspaceBounds {
@@ -157,7 +152,6 @@ interface BoxelPreviewState {
 }
 
 interface DragConnectionPreview {
-  boards: Board[]
   lineEnd: CreateCursorPosition
   lineStart: CreateCursorPosition
   point: CreateCursorPosition
@@ -471,14 +465,11 @@ function JointCandidateBars({ assembly }: JointCandidateBarProps) {
 
 function Scene({
   assemblyObjectsRef,
-  boardGroupRef,
-  boardToGroupRef,
   boxelModeEnabled = false,
   boxelRemoveModeEnabled = false,
   createBoardDraft,
   createBoardModeEnabled = false,
   document,
-  groupCounterRef,
   latestDocumentRef,
   onBoardEditRequest,
   selection,
@@ -532,6 +523,28 @@ function Scene({
       }),
     ]
   }, [createBoardDraft])
+
+  const createAnchorSnapHighlight = useMemo(() => {
+    if (!createBoardModeEnabled || createPreviewBoards.length === 0) {
+      return null
+    }
+    const previewBoard = createPreviewBoards[0]
+    if (!previewBoard) {
+      return null
+    }
+    const snap = findBoardAnchorMoveSnap(previewBoard, [...document.boards, previewBoard], CREATE_BOARD_GRID_SIZE)
+    if (!snap) {
+      return null
+    }
+    // Return the target anchor in 3D ThreeJS space
+    const targetBoard = document.boards.find(b => b.id === snap.targetBoardId)
+    if (!targetBoard) {
+      return null
+    }
+    const targetAnchors3D = getBoardAnchorPositions3D(targetBoard)
+    return targetAnchors3D[snap.targetAnchor]
+  }, [createBoardModeEnabled, createPreviewBoards, document.boards])
+
   const previewAssembly = useMemo(() => {
     if (!boxelPreview) {
       return null
@@ -577,22 +590,9 @@ function Scene({
     })
   }, [])
 
-  const getBoardGroup = useCallback((boardId: string) => {
-    const groupId = boardToGroupRef.current.get(boardId)
-    if (!groupId) {
-      return null
-    }
-
-    return boardGroupRef.current.get(groupId) ?? null
-  }, [boardGroupRef, boardToGroupRef])
-
-  const registerBoardGroup = useCallback((record: BoardGroupRecord) => {
-    boardGroupRef.current.set(record.id, record)
-
-    for (const boardId of record.boardIds) {
-      boardToGroupRef.current.set(boardId, record.id)
-    }
-  }, [boardGroupRef, boardToGroupRef])
+  const getPersistentBoardGroup = useCallback((boardId: string) => {
+    return getBoardGroupForBoard(latestDocumentRef.current.boardGroups, boardId)
+  }, [latestDocumentRef])
 
   function getPlaneIntersectionFromRay(ray: THREE.Ray) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
@@ -612,35 +612,25 @@ function Scene({
 
   const finishBoardDrag = useCallback(() => {
     const dragState = dragStateRef.current
-    if (dragState?.pendingConnection) {
-      const groupId = `group-${groupCounterRef.current + 1}`
-      groupCounterRef.current += 1
-      const geometrySnapshots = latestDocumentRef.current.boards
-        .filter(board =>
-          board.id === dragState.movingBoardId
-          || board.id === dragState.pendingConnection?.boardId,
-        )
-        .map(snapshotBoardGeometry)
-      const connectedDocument = applyBoardMoveConnection(
-        latestDocumentRef.current,
-        dragState.movingBoardId,
-        dragState.pendingConnection,
+    if (dragState?.pendingSnap) {
+      const snap = dragState.pendingSnap
+      const connection: BoardConnection = {
+        a: { boardId: dragState.movingBoardId, anchor: snap.movingAnchor },
+        b: { boardId: snap.targetBoardId, anchor: snap.targetAnchor },
+      }
+      const nextGroups = mergeBoardsThroughConnection(
+        latestDocumentRef.current.boardGroups,
+        connection,
       )
-
-      registerBoardGroup({
-        boardIds: [
-          dragState.movingBoardId,
-          dragState.pendingConnection.boardId,
-        ],
-        geometrySnapshots,
-        id: groupId,
-      })
-      onGroupStateChange(groupId)
-
+      const groupForMovingBoard = nextGroups.find(g =>
+        g.boardIds.includes(dragState.movingBoardId),
+      )
+      onGroupStateChange(groupForMovingBoard?.id ?? '')
       onDocumentChange(
-        updateDocumentTimestamp(
-          connectedDocument,
-        ),
+        updateDocumentTimestamp({
+          ...latestDocumentRef.current,
+          boardGroups: nextGroups,
+        }),
       )
     }
 
@@ -653,11 +643,9 @@ function Scene({
     }
   }, [
     controlsRef,
-    groupCounterRef,
     latestDocumentRef,
     onDocumentChange,
     onGroupStateChange,
-    registerBoardGroup,
   ])
 
   const getSnappedCreatePoint = useCallback((point: THREE.Vector3) => {
@@ -777,46 +765,28 @@ function Scene({
       let nextDocument = movedDocument
 
       if (dragState.selectedBoardIds.length === 1) {
-        const nextConnection = findBoardMoveConnection(
-          movedDocument,
-          dragState.movingBoardId,
-        )
-        const connection = nextConnection && !getBoardGroup(nextConnection.boardId)
-          ? nextConnection
+        const movingBoard = movedDocument.boards.find(b => b.id === dragState.movingBoardId)
+        const rawSnap = movingBoard
+          ? findBoardAnchorMoveSnap(movingBoard, movedDocument.boards, BOARD_ANCHOR_SNAP_THRESHOLD)
+          : null
+        const snap = rawSnap && !getPersistentBoardGroup(rawSnap.targetBoardId)
+          ? rawSnap
           : null
 
-        dragState.pendingConnection = connection
+        dragState.pendingSnap = snap
 
-        if (connection) {
-          nextDocument = moveBoardsByDelta(movedDocument, dragState.selectedBoardIds, connection.offset)
-          const preview = buildBoardMoveConnectionPreview(
-            nextDocument,
-            dragState.movingBoardId,
-            connection,
-          )
-          const lineDirection = connection.anchor === 'start'
-            ? { x: -1, y: 0 }
-            : { x: 1, y: 0 }
+        if (snap) {
+          nextDocument = moveBoardsByDelta(movedDocument, dragState.selectedBoardIds, snap.offset)
           setDragConnectionPreview({
-            boards: preview.boards,
-            lineEnd: {
-              x: preview.point.x + lineDirection.x * 54,
-              y: -(preview.point.y + lineDirection.y * 0),
-            },
-            lineStart: {
-              x: preview.point.x - lineDirection.x * 54,
-              y: -(preview.point.y - lineDirection.y * 0),
-            },
-            point: {
-              x: preview.point.x,
-              y: -preview.point.y,
-            },
+            lineEnd: { x: snap.snapPoint.x + 54, y: -snap.snapPoint.y },
+            lineStart: { x: snap.snapPoint.x - 54, y: -snap.snapPoint.y },
+            point: { x: snap.snapPoint.x, y: -snap.snapPoint.y },
           })
         } else {
           setDragConnectionPreview(null)
         }
       } else {
-        dragState.pendingConnection = null
+        dragState.pendingSnap = null
         setDragConnectionPreview(null)
       }
 
@@ -836,7 +806,7 @@ function Scene({
       window.removeEventListener('pointermove', handleWindowPointerMove)
       window.removeEventListener('pointerup', handleWindowPointerUp)
     }
-  }, [boxelModeEnabled, boxelRemoveModeEnabled, camera, finishBoardDrag, getBoardGroup, getSnappedCreatePoint, gl, latestDocumentRef, onDocumentChange, syncCreateCursor])
+  }, [boxelModeEnabled, boxelRemoveModeEnabled, camera, finishBoardDrag, getPersistentBoardGroup, getSnappedCreatePoint, gl, latestDocumentRef, onDocumentChange, syncCreateCursor])
 
   function handleBoardPointerDown(event: ThreeEvent<PointerEvent>, board: Board) {
     if (isCreateModeActive) {
@@ -855,14 +825,14 @@ function Scene({
       return
     }
 
-    const boardGroup = getBoardGroup(board.id)
+    const persistentGroup = getBoardGroupForBoard(document.boardGroups, board.id)
     const dragDocument = document
     let selectedBoardIds = [board.id]
 
-    if (boardGroup) {
-      selectedBoardIds = boardGroup.boardIds
+    if (persistentGroup) {
+      selectedBoardIds = persistentGroup.boardIds
     }
-    onGroupStateChange(boardGroup?.id ?? '')
+    onGroupStateChange(persistentGroup?.id ?? '')
 
     const isSelected = selection.selectedBoardIds.includes(board.id)
     const nextSelection = selectedBoardIds.length > 1
@@ -889,7 +859,7 @@ function Scene({
     dragStateRef.current = {
       document: dragDocument,
       movingBoardId: board.id,
-      pendingConnection: null,
+      pendingSnap: null,
       selectedBoardIds: nextSelection.selectedBoardIds,
       startPoint: planePoint.clone(),
     }
@@ -984,10 +954,13 @@ function Scene({
       start: toDocumentPoint(createBoardDraft.start),
       end: toDocumentPoint(nextPoint),
     })
-    const nextDocument = updateDocumentTimestamp({
+    const withBoard = {
       ...document,
       boards: [...document.boards, nextBoard],
-    })
+    }
+    const nextDocument = updateDocumentTimestamp(
+      evaluateBoardGroupsAfterAdd(withBoard, nextBoard.id),
+    )
 
     onDocumentChange(nextDocument)
     onSelectionChange(selectSingleBoard(nextBoard.id))
@@ -1075,6 +1048,18 @@ function Scene({
           onPointerUp={isCreateModeActive ? undefined : handleBoardPointerUp}
         />
       ))}
+      {document.boards.filter(board =>
+        selection.selectedBoardIds.includes(board.id)
+        || selection.activeBoardId === board.id,
+      ).flatMap((board) => {
+        const anchors = getBoardAnchorPositions3D(board)
+        return Object.entries(anchors).map(([side, pos]) => (
+          <mesh key={`anchor-${board.id}-${side}`} position={[pos.x, pos.y, pos.z]}>
+            <sphereGeometry args={[5, 16, 16]} />
+            <meshBasicMaterial color="#f59e0b" depthWrite={false} transparent opacity={0.85} />
+          </mesh>
+        ))
+      })}
       {document.assemblies.map((assembly) => (
         <group key={assembly.id}>
           <BoxelAssemblyMesh
@@ -1091,14 +1076,6 @@ function Scene({
       {dragConnectionPreview
         ? (
           <>
-            {dragConnectionPreview.boards.map((previewBoard) => (
-              <BoardMesh
-                key={`drag-connection-preview-${previewBoard.id}`}
-                board={previewBoard}
-                onMeshChange={() => { }}
-                preview
-              />
-            ))}
             <mesh
               position={[
                 (dragConnectionPreview.lineStart.x + dragConnectionPreview.lineEnd.x) / 2,
@@ -1146,6 +1123,23 @@ function Scene({
             preview
           />
         ))
+        : null}
+      {createAnchorSnapHighlight
+        ? (
+          <>
+            <mesh position={[createAnchorSnapHighlight.x, createAnchorSnapHighlight.y, createAnchorSnapHighlight.z + 2]}>
+              <sphereGeometry args={[7, 24, 24]} />
+              <meshBasicMaterial color="#f59e0b" depthWrite={false} transparent opacity={0.95} />
+            </mesh>
+            <mesh
+              position={[createAnchorSnapHighlight.x, createAnchorSnapHighlight.y, createAnchorSnapHighlight.z]}
+              rotation={[Math.PI / 2, 0, 0]}
+            >
+              <ringGeometry args={[12, 20, 40]} />
+              <meshBasicMaterial color="#f59e0b" depthWrite={false} side={THREE.DoubleSide} transparent opacity={0.45} />
+            </mesh>
+          </>
+        )
         : null}
       {boxelModeEnabled && previewAssembly
         ? (
@@ -1197,10 +1191,7 @@ export function BoardPreview3D({
   const { resolvedTheme } = useTheme()
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null)
   const assemblyObjectsRef = useRef(new Map<string, THREE.Object3D>())
-  const boardGroupRef = useRef(new Map<string, BoardGroupRecord>())
-  const boardToGroupRef = useRef(new Map<string, string>())
   const latestDocumentRef = useRef(document)
-  const groupCounterRef = useRef(0)
   const [initialCameraFraming] = useState(() =>
     getCameraFraming(getBoardWorkspaceBounds(document)),
   )
@@ -1231,24 +1222,19 @@ export function BoardPreview3D({
       return
     }
 
-    const group = boardGroupRef.current.get(activeGroupId)
+    const group = latestDocumentRef.current.boardGroups.find(g => g.id === activeGroupId)
     if (!group) {
       setActiveGroupId('')
       return
     }
 
-    const restoredDocument = restoreBoardGeometry(
-      latestDocumentRef.current,
-      group.geometrySnapshots,
-    )
-
-    for (const boardId of group.boardIds) {
-      boardToGroupRef.current.delete(boardId)
+    const nextDocument = {
+      ...latestDocumentRef.current,
+      boardGroups: latestDocumentRef.current.boardGroups.filter(g => g.id !== activeGroupId),
     }
 
-    boardGroupRef.current.delete(activeGroupId)
     setActiveGroupId('')
-    onDocumentChange(updateDocumentTimestamp(restoredDocument))
+    onDocumentChange(updateDocumentTimestamp(nextDocument))
   }
 
   useEffect(() => {
@@ -1332,14 +1318,11 @@ export function BoardPreview3D({
         >
           <Scene
             assemblyObjectsRef={assemblyObjectsRef}
-            boardGroupRef={boardGroupRef}
-            boardToGroupRef={boardToGroupRef}
             boxelModeEnabled={boxelModeEnabled}
             boxelRemoveModeEnabled={boxelRemoveModeEnabled}
             createBoardDraft={createBoardDraft}
             createBoardModeEnabled={createBoardModeEnabled}
             document={document}
-            groupCounterRef={groupCounterRef}
             latestDocumentRef={latestDocumentRef}
             onBoardEditRequest={onBoardEditRequest}
             selection={selection}
