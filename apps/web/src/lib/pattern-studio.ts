@@ -273,18 +273,18 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
   const lengthB = getUprightBoardLength(wallB)
 
   if (!heightA || !heightB || !lengthA || !lengthB) return null
+const zElevation = Math.max(heightA, heightB)
+const roofLength = Math.max(lengthA, lengthB)
 
-  const zElevation = Math.max(heightA, heightB)
-  const roofLength = Math.max(lengthA, lengthB)
-  
-  // Span is the distance between the two walls
-  const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
-  
-  const pitchDeg = 45
-  const pitchRad = (pitchDeg * Math.PI) / 180
-  
-  // Width of each roof panel so they meet in the middle
-  const roofPanelWidth = (span / 2) / Math.cos(pitchRad)
+// Span is the distance between the two walls
+const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
+
+// For an equilateral triangle roof:
+// - Pitch is 60 degrees.
+// - The two roof sides and the base (span) are all equal length.
+// - So each roof panel width = span.
+const pitchDeg = 60
+const roofPanelWidth = span
 
   // One panel will point inward based on the group centroid
   const centroid = { x: (wallA.transform.x + wallB.transform.x) / 2, y: (wallA.transform.y + wallB.transform.y) / 2 }
@@ -349,6 +349,16 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
     boardIds: [...group.boardIds, roofA.id, roofB.id],
     connections: [
       ...group.connections,
+      // Roof A to Wall A
+      {
+        a: { boardId: roofA.id, anchor: 'bottom' },
+        b: { boardId: wallA.id, anchor: 'top' },
+      },
+      // Roof B to Wall B
+      {
+        a: { boardId: roofB.id, anchor: 'bottom' },
+        b: { boardId: wallB.id, anchor: 'top' },
+      },
       // Peak: Roof A to Roof B
       {
         a: { boardId: roofA.id, anchor: 'top' },
