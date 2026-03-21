@@ -362,6 +362,11 @@ function BoardMesh({
   const geometry = useMemo(() => {
     const outline = getBoardOutlineWithJoints(board, boardGroups, allBoards)
     const outlinePoints = sampleShapePoints(outline)
+
+    if (outlinePoints.length < 3) {
+      return null
+    }
+
     const isUpright = board.transform.orientation === 'upright' || board.transform.orientation === 'hinged'
     const shape = isUpright
       ? toUprightBoardShape(outlinePoints)
@@ -393,7 +398,7 @@ function BoardMesh({
     return nextGeometry
   }, [allBoards, board, boardGroups])
 
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => geometry?.dispose(), [geometry])
 
   const meshRotation: [number, number, number] = useMemo(() => {
     if (board.transform.orientation === 'upright') {
@@ -415,30 +420,32 @@ function BoardMesh({
       position={[board.transform.x, -board.transform.y, board.transform.z ?? 0]}
       rotation={[0, 0, (-board.transform.rotation * Math.PI) / 180]}
     >
-      <mesh
-        castShadow={!preview}
-        receiveShadow={!preview}
-        ref={(object) => {
-          onMeshChange(board.id, object)
-        }}
-        geometry={geometry}
-        rotation={meshRotation}
-        onDoubleClick={onDoubleClick ? event => onDoubleClick(event, board) : undefined}
-        onPointerDown={onPointerDown ? event => onPointerDown(event, board) : undefined}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <meshStandardMaterial
-          color={preview ? '#7dd3fc' : '#8f8576'}
-          depthWrite={!preview}
-          emissive={preview ? '#38bdf8' : '#000000'}
-          emissiveIntensity={preview ? 0.18 : 0}
-          metalness={0.02}
-          opacity={preview ? 0.55 : 1}
-          roughness={preview ? 0.62 : 0.84}
-          transparent={preview}
-        />
-      </mesh>
+      {geometry && (
+        <mesh
+          castShadow={!preview}
+          receiveShadow={!preview}
+          ref={(object) => {
+            onMeshChange(board.id, object)
+          }}
+          geometry={geometry}
+          rotation={meshRotation}
+          onDoubleClick={onDoubleClick ? event => onDoubleClick(event, board) : undefined}
+          onPointerDown={onPointerDown ? event => onPointerDown(event, board) : undefined}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        >
+          <meshStandardMaterial
+            color={preview ? '#7dd3fc' : '#8f8576'}
+            depthWrite={!preview}
+            emissive={preview ? '#38bdf8' : '#000000'}
+            emissiveIntensity={preview ? 0.18 : 0}
+            metalness={0.02}
+            opacity={preview ? 0.55 : 1}
+            roughness={preview ? 0.62 : 0.84}
+            transparent={preview}
+          />
+        </mesh>
+      )}
     </group>
   )
 }
@@ -541,6 +548,14 @@ function SketchPath({ points, hoverPoint }: { points: ControlPoint[]; hoverPoint
       new THREE.Vector3(points[0]!.x, -points[0]!.y, 2),
     ])
   }, [points, hoverPoint])
+
+  useEffect(() => () => {
+    lineGeometry?.dispose()
+  }, [lineGeometry])
+
+  useEffect(() => () => {
+    closingGeometry?.dispose()
+  }, [closingGeometry])
 
   return (
     <group>
