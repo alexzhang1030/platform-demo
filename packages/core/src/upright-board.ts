@@ -169,7 +169,7 @@ export function createDovetailSocket(
 }
 
 export function getUprightBoardLength(board: Board) {
-  if (board.transform.orientation !== 'upright') {
+  if (board.transform.orientation !== 'upright' && board.transform.orientation !== 'hinged') {
     return null
   }
 
@@ -178,7 +178,7 @@ export function getUprightBoardLength(board: Board) {
 }
 
 export function getUprightBoardHeight(board: Board) {
-  if (board.transform.orientation !== 'upright') {
+  if (board.transform.orientation !== 'upright' && board.transform.orientation !== 'hinged') {
     return null
   }
 

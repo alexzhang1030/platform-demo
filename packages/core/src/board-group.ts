@@ -74,6 +74,35 @@ export function getBoardAnchorPositions3D(board: Board): Record<BoardAnchorSide,
     const midX = (baseline.start.x + baseline.end.x) / 2
     const midY = (baseline.start.y + baseline.end.y) / 2
 
+    // For hinged boards, we need to apply the pitch and z-elevation
+    if (board.transform.orientation === 'hinged') {
+      const pitchDeg = board.transform.pitch ?? 0
+      const pitchRad = (pitchDeg * Math.PI) / 180
+      const zBase = board.transform.z ?? 0
+      const flipFactor = board.transform.flipPitch ? -1 : 1
+
+      // Top anchor is at the end of the tilted board
+      const topZ = zBase + boardHeight * Math.sin(pitchRad)
+      const topOffsetDist = boardHeight * Math.cos(pitchRad) * flipFactor
+      const topX = midX + topOffsetDist * -baseline.direction.y
+      const topY = midY + topOffsetDist * baseline.direction.x
+
+      // Side anchors are halfway up the tilted board
+      const sideZ = zBase + (boardHeight / 2) * Math.sin(pitchRad)
+      const sideOffsetDist = (boardHeight / 2) * Math.cos(pitchRad) * flipFactor
+      const leftX = baseline.start.x + sideOffsetDist * -baseline.direction.y
+      const leftY = baseline.start.y + sideOffsetDist * baseline.direction.x
+      const rightX = baseline.end.x + sideOffsetDist * -baseline.direction.y
+      const rightY = baseline.end.y + sideOffsetDist * baseline.direction.x
+
+      return {
+        left: { x: leftX, y: -leftY, z: sideZ },
+        right: { x: rightX, y: -rightY, z: sideZ },
+        top: { x: topX, y: -topY, z: topZ },
+        bottom: { x: midX, y: -midY, z: zBase }, // Hinge point
+      }
+    }
+
     return {
       left: { x: baseline.start.x, y: -baseline.start.y, z: boardHeight / 2 },
       right: { x: baseline.end.x, y: -baseline.end.y, z: boardHeight / 2 },
