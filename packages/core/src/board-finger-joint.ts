@@ -118,9 +118,13 @@ function buildFingerEdgePoints(
   fingerCount: number,
   startWithTab: boolean,
   horizontal = false,
+  subtractive = false,
 ): ControlPoint[] {
   const points: ControlPoint[] = []
   const direction = yEnd > yStart ? 1 : -1
+
+  // If subtractive, we pull the tabs INSIDE the board instead of pushing them OUT
+  const effectiveTabDir = subtractive ? -tabDir : tabDir
 
   for (let i = 0; i < fingerCount; i++) {
     const isTab = startWithTab ? i % 2 === 0 : i % 2 !== 0
@@ -130,8 +134,8 @@ function buildFingerEdgePoints(
     if (horizontal) {
       if (isTab) {
         // Tab depth extends along Y axis
-        points.push({ x: offset, y: xBase + tabDir * depth })
-        points.push({ x: nextOffset, y: xBase + tabDir * depth })
+        points.push({ x: offset, y: xBase + effectiveTabDir * depth })
+        points.push({ x: nextOffset, y: xBase + effectiveTabDir * depth })
       } else {
         // Socket stays on baseline
         points.push({ x: offset, y: xBase })
@@ -141,8 +145,8 @@ function buildFingerEdgePoints(
     else {
       if (isTab) {
         // Tab depth extends along X axis
-        points.push({ x: xBase + tabDir * depth, y: offset })
-        points.push({ x: xBase + tabDir * depth, y: nextOffset })
+        points.push({ x: xBase + effectiveTabDir * depth, y: offset })
+        points.push({ x: xBase + effectiveTabDir * depth, y: nextOffset })
       } else {
         // Socket stays on baseline
         points.push({ x: xBase, y: offset })
@@ -168,6 +172,7 @@ interface EdgeOptions {
   fingerCount: number
   fingerWidth: number
   startWithTab: boolean
+  subtractive?: boolean
 }
 
 function buildOutlineWithFingerJoints(
@@ -186,6 +191,7 @@ function buildOutlineWithFingerJoints(
       0, 0, length, bottomEdge.depth, -1,
       bottomEdge.fingerWidth, bottomEdge.fingerCount, bottomEdge.startWithTab,
       true, // horizontal
+      bottomEdge.subtractive,
     )
     points.push(...edgePoints)
   }
@@ -199,6 +205,8 @@ function buildOutlineWithFingerJoints(
     const edgePoints = buildFingerEdgePoints(
       length, 0, height, rightEdge.depth, 1,
       rightEdge.fingerWidth, rightEdge.fingerCount, rightEdge.startWithTab,
+      false,
+      rightEdge.subtractive,
     )
     // skip duplicate first point
     points.push(...edgePoints.slice(1))
@@ -213,6 +221,7 @@ function buildOutlineWithFingerJoints(
       length, height, 0, topEdge.depth, 1,
       topEdge.fingerWidth, topEdge.fingerCount, topEdge.startWithTab,
       true, // horizontal
+      topEdge.subtractive,
     )
     // skip duplicate first point
     points.push(...edgePoints.slice(1))
@@ -226,6 +235,8 @@ function buildOutlineWithFingerJoints(
     const edgePoints = buildFingerEdgePoints(
       0, height, 0, leftEdge.depth, -1,
       leftEdge.fingerWidth, leftEdge.fingerCount, leftEdge.startWithTab,
+      false,
+      leftEdge.subtractive,
     )
     // skip duplicate first point
     points.push(...edgePoints.slice(1))
@@ -315,7 +326,13 @@ export function getBoardOutlineWithJoints(
     // Connections on 'top' or 'bottom' are treated as subtractive sockets for the wall.
     const startWithTab = (myAnchor === 'top' || myAnchor === 'bottom') ? false : isA
 
-    const edgeOptions: EdgeOptions = { depth, fingerCount, fingerWidth, startWithTab }
+    const edgeOptions: EdgeOptions = {
+      depth,
+      fingerCount,
+      fingerWidth,
+      startWithTab,
+      subtractive: myAnchor === 'top' || myAnchor === 'bottom',
+    }
 
     if (myAnchor === 'left') leftEdge = edgeOptions
     if (myAnchor === 'right') rightEdge = edgeOptions
