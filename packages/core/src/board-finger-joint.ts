@@ -31,14 +31,26 @@ function getOutwardDirection(board: Board, anchor: BoardAnchorSide): ControlPoin
     return { x: baseline.direction.x, y: baseline.direction.y }
   }
 
-  if (anchor === 'top') {
-    // Normal to baseline (90 deg CCW)
-    return { x: -baseline.direction.y, y: baseline.direction.x }
-  }
+  if (anchor === 'top' || anchor === 'bottom') {
+    if (board.transform.orientation !== 'hinged') {
+      return null
+    }
 
-  if (anchor === 'bottom') {
-    // Inverse normal (90 deg CW)
-    return { x: baseline.direction.y, y: -baseline.direction.x }
+    const normal = { x: -baseline.direction.y, y: baseline.direction.x }
+    const flipFactor = board.transform.flipPitch ? -1 : 1
+    const topDirection = {
+      x: normal.x * flipFactor,
+      y: normal.y * flipFactor,
+    }
+
+    if (anchor === 'top') {
+      return topDirection
+    }
+
+    return {
+      x: -topDirection.x,
+      y: -topDirection.y,
+    }
   }
 
   return null
@@ -173,6 +185,8 @@ interface EdgeOptions {
   fingerWidth: number
   startWithTab: boolean
   subtractive?: boolean
+  segmentEnd?: number
+  segmentStart?: number
 }
 
 function buildOutlineWithFingerJoints(
@@ -217,14 +231,25 @@ function buildOutlineWithFingerJoints(
 
   // Top edge: right → left (x = length → 0 at y = height)
   if (topEdge) {
+    const segmentEnd = topEdge.segmentEnd ?? length
+    const segmentStart = topEdge.segmentStart ?? 0
+
+    if (segmentEnd !== length) {
+      points.push({ x: segmentEnd, y: height })
+    }
+
     const edgePoints = buildFingerEdgePoints(
-      length, height, 0, topEdge.depth, 1,
+      segmentEnd, height, segmentStart, topEdge.depth, 1,
       topEdge.fingerWidth, topEdge.fingerCount, topEdge.startWithTab,
       true, // horizontal
       topEdge.subtractive,
     )
     // skip duplicate first point
     points.push(...edgePoints.slice(1))
+
+    if (segmentStart !== 0) {
+      points.push({ x: 0, y: height })
+    }
   }
   else {
     points.push({ x: 0, y: height })
@@ -321,17 +346,38 @@ export function getBoardOutlineWithJoints(
 
     const dimension = (myAnchor === 'left' || myAnchor === 'right') ? height : length
     const { fingerCount, fingerWidth } = computeFingerPattern(dimension, board.thickness)
-    
-    // To keep wall heights original, walls MUST be socket boards (subtractive).
-    // Connections on 'top' or 'bottom' are treated as subtractive sockets for the wall.
-    const startWithTab = (myAnchor === 'top' || myAnchor === 'bottom') ? false : isA
+    const otherAnchor = isA ? connection.b.anchor : connection.a.anchor
+    const isHingedRidgeConnection =
+      myAnchor === 'top'
+      && otherAnchor === 'top'
+      && board.transform.orientation === 'hinged'
+      && otherBoard.transform.orientation === 'hinged'
+
+    // Wall/roof eave connections should not change wall height, but roof ridge
+    // connections should still produce visible interlocking tabs.
+    const startWithTab = (myAnchor === 'top' || myAnchor === 'bottom')
+      ? (isHingedRidgeConnection ? isA : false)
+      : isA
 
     const edgeOptions: EdgeOptions = {
       depth,
       fingerCount,
       fingerWidth,
       startWithTab,
-      subtractive: myAnchor === 'top' || myAnchor === 'bottom',
+      subtractive: (myAnchor === 'top' || myAnchor === 'bottom') && !isHingedRidgeConnection,
+    }
+
+    if (isHingedRidgeConnection) {
+      const inset = Math.max(depth * 2, fingerWidth * 2)
+      const segmentStart = inset
+      const segmentEnd = Math.max(inset, length - inset)
+      const segmentLength = Math.max(fingerWidth, segmentEnd - segmentStart)
+      const ridgePattern = computeFingerPattern(segmentLength, board.thickness)
+
+      edgeOptions.segmentStart = segmentStart
+      edgeOptions.segmentEnd = segmentEnd
+      edgeOptions.fingerCount = ridgePattern.fingerCount
+      edgeOptions.fingerWidth = ridgePattern.fingerWidth
     }
 
     if (myAnchor === 'left') leftEdge = edgeOptions

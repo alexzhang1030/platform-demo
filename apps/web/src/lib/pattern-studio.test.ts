@@ -7,6 +7,7 @@ import {
 } from '@xtool-demo/protocol'
 
 import {
+  addGableRoofToGroup,
   commitBoxelAtColumn,
   createEditorSelection,
   removeBoxelFromAssembly,
@@ -62,6 +63,70 @@ describe('pattern studio selection helpers', () => {
       activeBoardId: '',
       selectedAssemblyIds: ['assembly-1', 'assembly-2'],
       selectedBoardIds: [],
+    })
+  })
+})
+
+function getShapeHeight(shape: PatternDocument['boards'][number]['outline']) {
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  shape.segments.forEach((segment) => {
+    segment.points.forEach((point) => {
+      minY = Math.min(minY, point.y)
+      maxY = Math.max(maxY, point.y)
+    })
+  })
+
+  return maxY - minY
+}
+
+describe('pattern studio gable roof helpers', () => {
+  test('computes roof board height from perpendicular wall span, not wall origin distance', () => {
+    const document: PatternDocument = {
+      ...createDefaultPatternDocument(),
+      boards: [
+        {
+          id: 'wall-a',
+          name: 'Wall A',
+          thickness: 18,
+          material: 'birch',
+          transform: { x: 0, y: 0, rotation: 0, orientation: 'upright' },
+          outline: createRectangleShape(200, 100),
+          holes: [],
+        },
+        {
+          id: 'wall-b',
+          name: 'Wall B',
+          thickness: 18,
+          material: 'birch',
+          transform: { x: 200, y: 100, rotation: 180, orientation: 'upright' },
+          outline: createRectangleShape(200, 100),
+          holes: [],
+        },
+      ],
+      assemblies: [],
+      boardGroups: [{
+        id: 'group-1',
+        name: 'Group 1',
+        boardIds: ['wall-a', 'wall-b'],
+        connections: [],
+      }],
+    }
+
+    const result = addGableRoofToGroup(document, 'group-1')
+
+    expect(result).not.toBeNull()
+    if (!result) {
+      return
+    }
+
+    const roofBoards = result.document.boards.filter(board => board.name.startsWith('Roof panel'))
+    expect(roofBoards).toHaveLength(2)
+
+    const expectedRoofHeight = 50 / Math.cos((30 * Math.PI) / 180)
+    roofBoards.forEach((board) => {
+      expect(getShapeHeight(board.outline)).toBeCloseTo(expectedRoofHeight, 5)
     })
   })
 })

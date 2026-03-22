@@ -89,3 +89,20 @@ create gesture 最终只创建一块板：
 - 最后由外层 group 用 `rotation` 决定它在地面上的朝向
 
 这样长度沿地面，厚度横向展开，高度朝 `Z` 方向抬起。
+
+## Hinged / roof board 的轮廓约束
+
+屋顶板使用 `orientation = hinged`，它和 `upright` 一样都把 outline 的本地 `y` 视为板高，只是在 3D 里额外按 `pitch` 绕铰接边倾斜。
+
+这有一个重要约束：
+
+- `left/right` anchor 连接可以参与 finger joint 轮廓改写
+- `top/bottom` anchor 连接不应该改写板的 outline
+
+原因是 `top/bottom` 对 `upright` / `hinged` 板来说表示沿板高方向的连接点。像 `roof.bottom -> wall.top` 这样的连接如果直接改写 outline，会把墙顶或屋顶底边也算进 joint 轮廓，进而污染板高、anchor 高度和 3D 外观。
+
+所以当前实现里，roof-to-wall 这类 `bottom -> top` 连接只保留连接语义与 anchor 对齐，不参与 finger-joint 轮廓生成。这样生成屋顶时不会把墙体高度一起改掉，屋顶板高也仍然由原始 roof panel outline 决定。
+
+但 `hinged roof.top -> hinged roof.top` 的屋脊连接是例外：它仍然会参与 finger-joint 轮廓生成。实现上只有 `hinged` 板的 `top/bottom` 会提供接缝方向，而普通 `upright` 板的 `top/bottom` 仍然视为 unsupported。这样可以保住屋脊的 interlocking seam，同时避免墙顶被误改。
+
+另外，gable roof 的 roof panel 高度不是根据两面墙 `transform` 起点的直线距离计算，而是根据两条平行墙基线之间的垂直距离计算。这样即使两面墙的起点不在同一端、或者其中一面墙反向放置，roof panel 的斜板高度仍然只反映真实跨距，不会被墙长方向的偏移放大。

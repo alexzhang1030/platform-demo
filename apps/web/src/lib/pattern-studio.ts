@@ -18,6 +18,7 @@ import {
   findFaceAdjacentAssemblies,
   findClosestUprightBoardMoveSnap,
   getBoundsFromPoints,
+  getUprightBoardBaseline,
   getUprightBoardHeight,
   getUprightBoardLength,
   mergeBoardsThroughConnection,
@@ -223,6 +224,20 @@ export function commitStandingBoardFromSpan(
   return buildStandingBoard(span)
 }
 
+function getParallelWallSpan(wallA: Board, wallB: Board) {
+  const baselineA = getUprightBoardBaseline(wallA)
+  const baselineB = getUprightBoardBaseline(wallB)
+
+  if (!baselineA || !baselineB) {
+    return Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
+  }
+
+  const deltaX = baselineB.start.x - baselineA.start.x
+  const deltaY = baselineB.start.y - baselineA.start.y
+
+  return Math.abs(deltaX * baselineA.direction.y - deltaY * baselineA.direction.x)
+}
+
 function findParallelWallPair(boards: Board[]): [Board, Board] | null {
   const uprights = boards.filter(b => b.transform.orientation === 'upright')
   if (uprights.length < 2) return null
@@ -240,13 +255,13 @@ function findParallelWallPair(boards: Board[]): [Board, Board] | null {
   let bestPair: [Board, Board] | null = null
   let maxSpan = 0
 
-  // Find the pair with the largest distance between them
-  for (const [_, groupBoards] of rotationGroups.entries()) {
+  // Find the pair with the largest perpendicular distance between their baselines
+  for (const groupBoards of rotationGroups.values()) {
     for (let i = 0; i < groupBoards.length; i++) {
       for (let j = i + 1; j < groupBoards.length; j++) {
         const a = groupBoards[i]!
         const b = groupBoards[j]!
-        const span = Math.hypot(a.transform.x - b.transform.x, a.transform.y - b.transform.y)
+        const span = getParallelWallSpan(a, b)
         if (span > maxSpan) {
           maxSpan = span
           bestPair = [a, b]
@@ -276,8 +291,8 @@ export function addGableRoofToGroup(document: PatternDocument, groupId: string):
 const zElevation = Math.max(heightA, heightB)
 const roofLength = Math.max(lengthA, lengthB)
 
-// Span is the distance between the two walls
-const span = Math.hypot(wallA.transform.x - wallB.transform.x, wallA.transform.y - wallB.transform.y)
+// Span is the perpendicular distance between the two wall baselines
+const span = getParallelWallSpan(wallA, wallB)
 
 // For a 30-degree pitch roof:
 // - Pitch is 30 degrees.
