@@ -2,13 +2,13 @@ import type {
   Board,
   Path2DShape,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 import {
   createDefaultPatternDocument,
   createRectangleShape,
   createRoundedRectangleShape,
-} from '@xtool-demo/protocol'
-import { getBoundsFromPoints, sampleShapePoints } from '@xtool-demo/core'
+} from '@platform-demo/protocol'
+import { getBoundsFromPoints, sampleShapePoints } from '@platform-demo/core'
 
 import {
   createEditorSelection,

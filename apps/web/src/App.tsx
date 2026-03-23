@@ -1,10 +1,10 @@
-import type { PatternDocument } from '@xtool-demo/protocol'
+import type { PatternDocument } from '@platform-demo/protocol'
 import type {
   EditorSelectionState,
   RouteKey,
 } from '@/lib/pattern-studio'
-import { generateSvgDocument } from '@xtool-demo/core'
-import { createDefaultPatternDocument, parsePatternJson, stringifyPatternDocument } from '@xtool-demo/protocol'
+import { generateSvgDocument } from '@platform-demo/core'
+import { createDefaultPatternDocument, parsePatternJson, stringifyPatternDocument } from '@platform-demo/protocol'
 
 import { useEffect, useState, useTransition } from 'react'
 import { EditorPage } from '@/components/pattern-studio/editor-page'

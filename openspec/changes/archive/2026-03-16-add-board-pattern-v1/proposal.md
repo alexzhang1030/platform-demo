@@ -22,7 +22,7 @@ The repository only had a frontend skeleton, while `docs/CRAFT.md` defines a boa
 
 ## Impact
 
-- Adds new workspace packages: `@xtool-demo/protocol` and `@xtool-demo/core`.
+- Adds new workspace packages: `@platform-demo/protocol` and `@platform-demo/core`.
 - Updates the `web` app to depend on the new packages and expose `/editor` and `/generator`.
 - Adds a root `zod` dependency for schema validation.
 - Establishes the first public document contract: `PatternDocument` version `1.0`.

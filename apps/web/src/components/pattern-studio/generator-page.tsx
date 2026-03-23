@@ -1,10 +1,10 @@
-import type { PatternDocument } from '@xtool-demo/protocol'
+import type { PatternDocument } from '@platform-demo/protocol'
 import { Button } from '@workspace/ui/components/button'
 import {
   generateSvgDocument,
   getDocumentBounds,
   transformBoardPoints,
-} from '@xtool-demo/core'
+} from '@platform-demo/core'
 import { Download, FileUp, MoveRight } from 'lucide-react'
 import { useMemo } from 'react'
 

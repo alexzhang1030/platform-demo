@@ -2,7 +2,7 @@ import type {
   Board,
   ControlPoint,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 import type {
   ReactNode,
   PointerEvent as ReactPointerEvent,
@@ -17,7 +17,7 @@ import {
   buildNestingLayout,
   getBoardOutlineWithJoints,
   sampleShapePoints,
-} from '@xtool-demo/core'
+} from '@platform-demo/core'
 import {
   Download,
   Grip,

@@ -1,7 +1,7 @@
 ## 1. Shared protocol and core packages
 
-- [x] 1.1 Add `@xtool-demo/protocol` with the `PatternDocument` interfaces, preset shape builders, JSON serialization, and zod-backed parsing.
-- [x] 1.2 Add `@xtool-demo/core` with geometry sampling, transformed board bounds, lightweight preview projection, and SVG document generation.
+- [x] 1.1 Add `@platform-demo/protocol` with the `PatternDocument` interfaces, preset shape builders, JSON serialization, and zod-backed parsing.
+- [x] 1.2 Add `@platform-demo/core` with geometry sampling, transformed board bounds, lightweight preview projection, and SVG document generation.
 
 ## 2. Web app workflow
 

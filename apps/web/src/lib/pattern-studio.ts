@@ -6,7 +6,7 @@ import type {
   ControlPoint,
   Path2DShape,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 import {
   appendBoxelCellAboveColumn,
   buildJointCandidates,
@@ -27,17 +27,17 @@ import {
   normalizeUprightBoardSpan,
   splitAssemblyIntoConnectedComponents,
   splitBoardGroupAfterRemoval,
-} from '@xtool-demo/core'
+} from '@platform-demo/core'
 
 export {
   getUprightBoardHeight,
   getUprightBoardLength,
-} from '@xtool-demo/core'
+} from '@platform-demo/core'
 import {
   createCircleShape,
   createRectangleShape,
   createRoundedRectangleShape,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 import { getRandomId } from '@/lib/utils'
 

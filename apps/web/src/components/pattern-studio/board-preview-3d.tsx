@@ -7,8 +7,8 @@ import type {
   BoxelAssembly,
   ControlPoint,
   PatternDocument,
-} from '@xtool-demo/protocol'
-import type { AnchorPoint3D } from '@xtool-demo/core'
+} from '@platform-demo/protocol'
+import type { AnchorPoint3D } from '@platform-demo/core'
 import type { ComponentRef, RefObject } from 'react'
 import type { BoxelFaceNormal, EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
@@ -33,7 +33,7 @@ import {
   getUprightBoardLength,
   mergeBoardsThroughConnection,
   sampleShapePoints,
-} from '@xtool-demo/core'
+} from '@platform-demo/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three/webgpu'
 
@@ -1091,20 +1091,20 @@ function Scene({
     const isSelected = selection.selectedBoardIds.includes(board.id)
     const nextSelection = selectedBoardIds.length > 1
       ? {
-          activeAssemblyId: '',
-          activeBoardId: board.id,
-          selectedAssemblyIds: [],
-          selectedBoardIds,
-        }
+        activeAssemblyId: '',
+        activeBoardId: board.id,
+        selectedAssemblyIds: [],
+        selectedBoardIds,
+      }
       : isSelected
         ? selection
         : selectSingleBoard(board.id)
     const shouldUpdateSelection
       = nextSelection.activeBoardId !== selection.activeBoardId
-        || nextSelection.selectedBoardIds.length !== selection.selectedBoardIds.length
-        || nextSelection.selectedBoardIds.some((boardId, index) =>
-          boardId !== selection.selectedBoardIds[index],
-        )
+      || nextSelection.selectedBoardIds.length !== selection.selectedBoardIds.length
+      || nextSelection.selectedBoardIds.some((boardId, index) =>
+        boardId !== selection.selectedBoardIds[index],
+      )
 
     if (shouldUpdateSelection) {
       onSelectionChange(nextSelection)
@@ -1635,7 +1635,7 @@ export function BoardPreview3D({
     const result = addGableRoofToGroup(latestDocumentRef.current, activeGroupId)
     if (result) {
       onDocumentChange(result.document)
-      
+
       // Delay selection by two frames to ensure WebGPU geometries are ready
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -1767,44 +1767,44 @@ export function BoardPreview3D({
             </>
           )
           : boxelRemoveModeEnabled
-          ? (
-            <>
-              <span>Click boxel to remove</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Green bars show joint candidates</span>
-            </>
-          )
-          : boxelModeEnabled
-          ? (
-            <>
-              <span>Click to add boxel</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Click same column to stack upward</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Green bars show joint candidates</span>
-            </>
-          )
-          : createBoardModeEnabled
-          ? (
-            <>
-              <span>Click to start</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Click to commit</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Shift free angle</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Esc cancel</span>
-            </>
-          )
-          : (
-            <>
-              <span>Drag board</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Space drag to pan</span>
-              <span className="mx-1.5 text-foreground/35">/</span>
-              <span>Scroll to zoom</span>
-            </>
-          )}
+            ? (
+              <>
+                <span>Click boxel to remove</span>
+                <span className="mx-1.5 text-foreground/35">/</span>
+                <span>Green bars show joint candidates</span>
+              </>
+            )
+            : boxelModeEnabled
+              ? (
+                <>
+                  <span>Click to add boxel</span>
+                  <span className="mx-1.5 text-foreground/35">/</span>
+                  <span>Click same column to stack upward</span>
+                  <span className="mx-1.5 text-foreground/35">/</span>
+                  <span>Green bars show joint candidates</span>
+                </>
+              )
+              : createBoardModeEnabled
+                ? (
+                  <>
+                    <span>Click to start</span>
+                    <span className="mx-1.5 text-foreground/35">/</span>
+                    <span>Click to commit</span>
+                    <span className="mx-1.5 text-foreground/35">/</span>
+                    <span>Shift free angle</span>
+                    <span className="mx-1.5 text-foreground/35">/</span>
+                    <span>Esc cancel</span>
+                  </>
+                )
+                : (
+                  <>
+                    <span>Drag board</span>
+                    <span className="mx-1.5 text-foreground/35">/</span>
+                    <span>Space drag to pan</span>
+                    <span className="mx-1.5 text-foreground/35">/</span>
+                    <span>Scroll to zoom</span>
+                  </>
+                )}
       </div>
       <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center gap-2">
         {activeGroupId

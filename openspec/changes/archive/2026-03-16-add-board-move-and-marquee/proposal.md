@@ -19,5 +19,5 @@ The editor currently supports selection by direct click, but it does not support
 ## Impact
 
 - Updates the `web` editor workspace and shared editor state in `apps/web`.
-- May require small geometry helpers in `@xtool-demo/core` for hit testing, bounds checks, or multi-board movement.
+- May require small geometry helpers in `@platform-demo/core` for hit testing, bounds checks, or multi-board movement.
 - Changes the editor interaction model for both 2D and 3D views.

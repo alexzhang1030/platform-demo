@@ -1,7 +1,7 @@
 import type {
   BoxelAssembly,
   BoxelCell,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 export interface BoxelColumn {
   x: number

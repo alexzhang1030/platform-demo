@@ -1,10 +1,10 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test'
-import type { PatternDocument } from '@xtool-demo/protocol'
+import type { PatternDocument } from '@platform-demo/protocol'
 import {
   createDefaultPatternDocument,
   createRectangleShape,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 import {
   addGableRoofToGroup,

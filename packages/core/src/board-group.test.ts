@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test'
-import type { Board, BoardGroup } from '@xtool-demo/protocol'
-import { createRectangleShape } from '@xtool-demo/protocol'
+import type { Board, BoardGroup } from '@platform-demo/protocol'
+import { createRectangleShape } from '@platform-demo/protocol'
 
 import {
   findAnchorConnections,

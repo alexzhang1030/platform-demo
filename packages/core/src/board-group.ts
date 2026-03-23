@@ -4,7 +4,7 @@ import type {
   BoardConnection,
   BoardGroup,
   ControlPoint,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 import { getBoundsFromPoints, transformBoardPoints } from './geometry'
 import {

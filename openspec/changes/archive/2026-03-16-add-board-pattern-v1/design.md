@@ -28,7 +28,7 @@ This was chosen over splitting into multiple apps because:
 - v1 values iteration speed over deployment isolation.
 
 ### Introduce protocol and core as separate workspace packages
-`@xtool-demo/protocol` owns the `PatternDocument` schema, zod validation, default document creation, and JSON serialization. `@xtool-demo/core` owns geometry sampling, bounds calculation, lightweight preview generation, and SVG emission.
+`@platform-demo/protocol` owns the `PatternDocument` schema, zod validation, default document creation, and JSON serialization. `@platform-demo/core` owns geometry sampling, bounds calculation, lightweight preview generation, and SVG emission.
 
 This separation keeps React components thin and avoids mixing view state with domain logic. It also creates a clear extension path for future generator features or a separate app without refactoring the document contract again.
 
@@ -56,6 +56,6 @@ This was chosen over Three.js or React Three Fiber in v1 because:
 ## Risks / Trade-offs
 
 - [Rounded and curved outlines are flattened during point editing] → Accept in v1; presets can start curved, but once edited they become explicit line segments. This keeps editing logic simple while preserving the exported closed shape.
-- [The 3D preview is illustrative rather than geometrically exact] → Keep preview logic in `@xtool-demo/core` and treat it as a replaceable adapter when real 3D rendering becomes necessary.
+- [The 3D preview is illustrative rather than geometrically exact] → Keep preview logic in `@platform-demo/core` and treat it as a replaceable adapter when real 3D rendering becomes necessary.
 - [Custom routing is intentionally minimal] → Accept for v1 because the route surface is small. If the app grows beyond a few routes, migrate to a dedicated router library.
 - [Generator output does not include manufacturing intelligence] → Make this explicit in specs so later work can extend SVG generation without breaking the existing contract.

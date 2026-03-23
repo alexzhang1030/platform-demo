@@ -5,8 +5,8 @@ import type {
   BoardGroup,
   ControlPoint,
   Path2DShape,
-} from '@xtool-demo/protocol'
-import { createLineShape } from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
+import { createLineShape } from '@platform-demo/protocol'
 
 import { getUprightBoardBaseline, getUprightBoardHeight, getUprightBoardLength } from './upright-board'
 

@@ -6,7 +6,7 @@
 
 **Architecture:** Introduce a focused AI module in `apps/web/src/lib` for parsing, executing, and checking AI commands. Wire the editor to this module through a small panel component/state flow so UI stays a thin client over deterministic helpers.
 
-**Tech Stack:** React 19, TypeScript, Bun test, existing `@xtool-demo/protocol` and `@xtool-demo/core` helpers, Tailwind v4 utilities.
+**Tech Stack:** React 19, TypeScript, Bun test, existing `@platform-demo/protocol` and `@platform-demo/core` helpers, Tailwind v4 utilities.
 
 ---
 

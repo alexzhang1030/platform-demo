@@ -3,7 +3,7 @@ import type {
   ControlPoint,
   Path2DShape,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 export interface Bounds {
   minX: number
