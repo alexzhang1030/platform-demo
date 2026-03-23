@@ -2,8 +2,8 @@ import type {
   Board,
   ControlPoint,
   Path2DShape,
-} from '@xtool-demo/protocol'
-import { createLineShape } from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
+import { createLineShape } from '@platform-demo/protocol'
 
 import {
   getBoundsFromPoints,

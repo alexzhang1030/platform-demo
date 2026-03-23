@@ -8,6 +8,10 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from 'react'
 import type { EditorSelectionState } from '@/lib/pattern-studio'
+import type {
+  AiCommandEnvelope,
+  AiManufacturingCheck,
+} from '@/lib/pattern-studio-ai'
 import { Button } from '@workspace/ui/components/button'
 import {
   buildNestingLayout,
@@ -19,7 +23,6 @@ import {
   Grip,
   Plus,
   Minus,
-  Pen,
   Shapes,
   X,
 } from 'lucide-react'
@@ -27,11 +30,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useTheme } from '@/components/theme-provider'
 import {
-  addGableRoofToGroup,
   createBoardFromPreset,
   evaluateBoardGroupsAfterRemove,
-  getUprightBoardHeight,
-  getUprightBoardLength,
   hingeExtrudeBoard,
   commitSketch,
   mapBoardColor,
@@ -42,6 +42,11 @@ import {
   toggleBoardSelection,
   updateDocumentTimestamp,
 } from '@/lib/pattern-studio'
+import {
+  applyAiCommand,
+  interpretAiPrompt,
+  runManufacturingChecks,
+} from '@/lib/pattern-studio-ai'
 import { clamp, formatMillimeters } from '@/lib/utils'
 
 import { BoardPreview3D } from './board-preview-3d'
@@ -82,7 +87,8 @@ interface InsetOffset {
 }
 
 type PipLevel = 'compact' | 'expanded' | 'fullscreen'
-type EditorTool = 'boxel-mode' | 'boxel-remove' | 'create-board' | 'pen-sketch' | 'select'
+export type EditorTool = 'boxel-mode' | 'boxel-remove' | 'create-board' | 'pen-sketch' | 'select'
+type LeftPanelTab = 'ai-studio' | 'tree'
 
 interface PipLayoutState {
   level: PipLevel
@@ -101,12 +107,32 @@ interface BoardPreviewSheet {
   width: number
 }
 
+interface AiRunRecord {
+  id: string
+  prompt: string
+  summary: string
+  status: AiCommandEnvelope['status']
+}
+
 const INSET_MARGIN = 8
 const NESTING_PANEL_PADDING = 40
 const NESTING_SHEET_GAP = 80
+const AI_QUICK_PROMPTS = [
+  '生成一个 120x80x60mm 的收纳盒，板厚 3mm，使用指接榫，带提手孔',
+  '生成一个 160x48x90mm 的托盘，板厚 4mm，使用插槽',
+  '把高度增加 20mm，再加一个提手孔，并把板厚改成 4mm',
+]
 
 function getOutlinePoints(board: Board, groups: PatternDocument['boardGroups'] = [], allBoards: Board[] = []) {
   return sampleShapePoints(getBoardOutlineWithJoints(board, groups, allBoards))
+}
+
+export function getToolAfterEscape(activeTool: EditorTool): EditorTool {
+  if (activeTool === 'select') {
+    return activeTool
+  }
+
+  return 'select'
 }
 
 function getInsetSize(panelWidth: number, level: Exclude<PipLevel, 'fullscreen'>) {
@@ -430,6 +456,12 @@ export function EditorPage({
     width: 1280,
   })
   const [isBoardEditDialogOpen, setIsBoardEditDialogOpen] = useState(false)
+  const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>('tree')
+  const [aiPrompt, setAiPrompt] = useState(AI_QUICK_PROMPTS[0] ?? '')
+  const [aiLastCommand, setAiLastCommand] = useState<AiCommandEnvelope | null>(null)
+  const [aiChecks, setAiChecks] = useState<AiManufacturingCheck[]>([])
+  const [aiExecutionSteps, setAiExecutionSteps] = useState<string[]>([])
+  const [aiHistory, setAiHistory] = useState<AiRunRecord[]>([])
   const splitPanelRef = useRef<HTMLDivElement | null>(null)
 
   const pipLevel = pipLayout.level
@@ -506,19 +538,19 @@ export function EditorPage({
   }, [])
 
   useEffect(() => {
-    if (isBoardEditDialogOpen && !selectedBoard) {
-      setIsBoardEditDialogOpen(false)
-    }
-  }, [isBoardEditDialogOpen, selectedBoard])
-
-  useEffect(() => {
-    if (!isBoardEditDialogOpen) {
-      return
-    }
-
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key !== 'Escape') {
+        return
+      }
+
+      if (isBoardEditDialogOpen) {
         setIsBoardEditDialogOpen(false)
+        return
+      }
+
+      const nextTool = getToolAfterEscape(activeTool)
+      if (nextTool !== activeTool) {
+        setActiveTool(nextTool)
       }
     }
 
@@ -526,7 +558,7 @@ export function EditorPage({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isBoardEditDialogOpen])
+  }, [activeTool, isBoardEditDialogOpen])
 
   function updateBoard(nextBoard: Board) {
     const isNew = !document.boards.some(board => board.id === nextBoard.id)
@@ -606,6 +638,39 @@ export function EditorPage({
     if (filteredBoards.length === 0) {
       setIsBoardEditDialogOpen(false)
     }
+  }
+
+  function runAiPrompt(prompt: string) {
+    const nextPrompt = prompt.trim()
+    if (nextPrompt.length === 0) {
+      return
+    }
+
+    const interpretedCommand = interpretAiPrompt(nextPrompt)
+    setLeftPanelTab('ai-studio')
+    setAiPrompt(nextPrompt)
+    setAiLastCommand(interpretedCommand)
+    setAiHistory(current => [
+      {
+        id: `${Date.now()}-${current.length}`,
+        prompt: nextPrompt,
+        summary: interpretedCommand.summary,
+        status: interpretedCommand.status,
+      },
+      ...current,
+    ].slice(0, 5))
+
+    if (interpretedCommand.status !== 'ready') {
+      setAiExecutionSteps(['Parse prompt into structure intent'])
+      setAiChecks([])
+      return
+    }
+
+    const result = applyAiCommand(document, interpretedCommand)
+    onDocumentChange(result.document)
+    onSelectionChange(result.selection)
+    setAiExecutionSteps(result.executionSteps)
+    setAiChecks(runManufacturingChecks(result.document, result.command))
   }
 
   const handleSketchStart = (point: ControlPoint) => {
@@ -1003,233 +1068,402 @@ export function EditorPage({
             </div>
           </div>
           <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,320px)] lg:w-[320px]">
+            <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,360px)] lg:w-[360px]">
               <SectionHeader
                 eyebrow="Boards"
                 title="Pattern"
                 meta={`${document.boards.length} boards · ${document.assemblies.length} assemblies`}
               />
-              <div className="mt-1.5 max-h-[min(34vh,360px)] space-y-1 overflow-auto pr-0.5 lg:max-h-[min(52vh,560px)]">
-                {document.boards.map((board, index) => {
-                  const active = board.id === activeBoardId
-                  const selected = selectedBoardIds.includes(board.id)
-                  return (
-                    <button
-                      type="button"
-                      key={board.id}
-                      className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
-                        ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
-                        : selected
-                          ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
-                          : 'border-border bg-card hover:bg-muted/45'
-                      }`}
-                      onClick={(event) => {
-                        if (event.metaKey || event.ctrlKey) {
-                          onSelectionChange(toggleBoardSelection(selection, board.id))
-                          return
-                        }
 
-                        onSelectionChange(selectSingleBoard(board.id))
-                      }}
-                    >
-                      <span
-                        className="mt-1 block size-2 shrink-0"
-                        style={{ backgroundColor: mapBoardColor(index) }}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
-                          {board.name}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] text-foreground/55">
-                          {formatMillimeters(board.thickness)}
-                        </span>
-                      </span>
-                    </button>
-                  )
-                })}
-                {document.assemblies.map((assembly, index) => {
-                  const active = assembly.id === activeAssemblyId
-                  const selected = selectedAssemblyIds.includes(assembly.id)
-                  return (
-                    <button
-                      type="button"
-                      key={assembly.id}
-                      className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
-                        ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
-                        : selected
-                          ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
-                          : 'border-border bg-card hover:bg-muted/45'
-                      }`}
-                      onClick={(event) => {
-                        if (event.metaKey || event.ctrlKey) {
-                          onSelectionChange(toggleAssemblySelection(selection, assembly.id))
-                          return
-                        }
-
-                        onSelectionChange(selectSingleAssembly(assembly.id))
-                      }}
-                    >
-                      <span
-                        className="mt-1 block size-2 shrink-0"
-                        style={{ backgroundColor: mapBoardColor(index + document.boards.length) }}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
-                          {assembly.name}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] text-foreground/55">
-                          {`${assembly.cells.length} boxels`}
-                        </span>
-                      </span>
-                    </button>
-                  )
-                })}
+              <div className="mt-2 flex gap-1 border border-border bg-muted/45 p-1">
+                <button
+                  type="button"
+                  className={`flex-1 px-2 py-1.5 text-[11px] font-medium transition-colors ${leftPanelTab === 'tree'
+                    ? 'bg-background text-foreground'
+                    : 'text-foreground/62 hover:bg-background/60 hover:text-foreground'
+                  }`}
+                  onClick={() => setLeftPanelTab('tree')}
+                >
+                  Tree
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-2 py-1.5 text-[11px] font-medium transition-colors ${leftPanelTab === 'ai-studio'
+                    ? 'bg-background text-foreground'
+                    : 'text-foreground/62 hover:bg-background/60 hover:text-foreground'
+                  }`}
+                  onClick={() => setLeftPanelTab('ai-studio')}
+                >
+                  AI Studio
+                </button>
               </div>
 
-              <div className="mt-1.5 border-t border-border pt-1.5">
-                <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
-                  Add content
-                </p>
-                <div className="mt-1.5">
-                  <Button
-                    variant={isBoxelModeActive ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8 w-full px-2 text-[11px]"
-                    onClick={() => {
-                      setActiveTool(current => {
-                        if (current === 'boxel-mode') {
-                          return 'select'
-                        }
+              {leftPanelTab === 'tree'
+                ? (
+                    <>
+                      <div className="mt-1.5 max-h-[min(34vh,360px)] space-y-1 overflow-auto pr-0.5 lg:max-h-[min(52vh,560px)]">
+                        {document.boards.map((board, index) => {
+                          const active = board.id === activeBoardId
+                          const selected = selectedBoardIds.includes(board.id)
+                          return (
+                            <button
+                              type="button"
+                              key={board.id}
+                              className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
+                                ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                                : selected
+                                  ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
+                                  : 'border-border bg-card hover:bg-muted/45'
+                              }`}
+                              onClick={(event) => {
+                                if (event.metaKey || event.ctrlKey) {
+                                  onSelectionChange(toggleBoardSelection(selection, board.id))
+                                  return
+                                }
 
-                        return 'boxel-mode'
-                      })
-                    }}
-                  >
-                    {isBoxelModeActive ? 'Exit boxel mode' : 'Boxel mode'}
-                  </Button>
-                  {isBoxelModeActive
-                    ? (
-                        <p className="mt-1 text-[10px] text-foreground/55">
-                          Create in 3D. Click an empty grid column to start a stack, click neighboring columns to merge laterally, and click the same column again to stack upward.
-                        </p>
-                      )
-                    : null}
-                  <Button
-                    variant={isBoxelRemoveModeActive ? 'default' : 'outline'}
-                    size="sm"
-                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
-                    onClick={() => {
-                      setActiveTool(current => {
-                        if (current === 'boxel-remove') {
-                          return 'select'
-                        }
-
-                        return 'boxel-remove'
-                      })
-                    }}
-                  >
-                    {isBoxelRemoveModeActive ? 'Exit remove boxel' : 'Remove boxel'}
-                  </Button>
-                  {isBoxelRemoveModeActive
-                    ? (
-                        <p className="mt-1 text-[10px] text-foreground/55">
-                          Remove in 3D. Click one boxel inside an assembly to remove it. Disconnected remnants split into separate assemblies automatically.
-                        </p>
-                      )
-                    : null}
-                  <Button
-                    variant={isCreateBoardToolActive ? 'default' : 'outline'}
-                    size="sm"
-                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
-                    onClick={() => {
-                      setActiveTool(current => {
-                        if (current === 'create-board') {
-                          return 'select'
-                        }
-
-                        return 'create-board'
-                      })
-                    }}
-                  >
-                    {isCreateBoardToolActive ? 'Exit draw mode' : 'Draw board'}
-                  </Button>
-                  {isCreateBoardToolActive
-                    ? (
-                        <p className="mt-1 text-[10px] text-foreground/55">
-                          Create in 3D. Click to start, click again to commit. Hold Shift for free angle. Press Esc to cancel.
-                        </p>
-                      )
-                    : null}
-                  <Button
-                    variant={isPenSketchActive ? 'default' : 'outline'}
-                    size="sm"
-                    className="mt-1.5 h-8 w-full px-2 text-[11px]"
-                    onClick={() => {
-                      setActiveTool(current => {
-                        if (current === 'pen-sketch') {
-                          return 'select'
-                        }
-
-                        return 'pen-sketch'
-                      })
-                    }}
-                  >
-                    {isPenSketchActive ? 'Exit pen sketch' : 'Smart Pen'}
-                  </Button>
-                  {isPenSketchActive
-                    ? (
-                        <div className="mt-1">
-                          <p className="mb-1.5 text-[10px] text-foreground/55">
-                            Click to place control points. Double-click or click Commit to finish.
-                          </p>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="h-7 flex-1 text-[10px]"
-                              disabled={sketchPoints.length < 3}
-                              onClick={handleFinishSketch}
+                                onSelectionChange(selectSingleBoard(board.id))
+                              }}
                             >
-                              Commit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 flex-1 text-[10px]"
-                              onClick={handleCancelSketch}
+                              <span
+                                className="mt-1 block size-2 shrink-0"
+                                style={{ backgroundColor: mapBoardColor(index) }}
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
+                                  {board.name}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-foreground/55">
+                                  {formatMillimeters(board.thickness)}
+                                </span>
+                              </span>
+                            </button>
+                          )
+                        })}
+                        {document.assemblies.map((assembly, index) => {
+                          const active = assembly.id === activeAssemblyId
+                          const selected = selectedAssemblyIds.includes(assembly.id)
+                          return (
+                            <button
+                              type="button"
+                              key={assembly.id}
+                              className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${active
+                                ? 'border-foreground bg-muted dark:border-black dark:bg-black/24 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                                : selected
+                                  ? 'border-foreground/30 bg-muted/55 dark:border-black/70 dark:bg-black/18 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
+                                  : 'border-border bg-card hover:bg-muted/45'
+                              }`}
+                              onClick={(event) => {
+                                if (event.metaKey || event.ctrlKey) {
+                                  onSelectionChange(toggleAssemblySelection(selection, assembly.id))
+                                  return
+                                }
+
+                                onSelectionChange(selectSingleAssembly(assembly.id))
+                              }}
                             >
-                              Cancel
-                            </Button>
-                          </div>
+                              <span
+                                className="mt-1 block size-2 shrink-0"
+                                style={{ backgroundColor: mapBoardColor(index + document.boards.length) }}
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-[12px] font-semibold tracking-[-0.03em]">
+                                  {assembly.name}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-foreground/55">
+                                  {`${assembly.cells.length} boxels`}
+                                </span>
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div className="mt-1.5 border-t border-border pt-1.5">
+                        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                          Add content
+                        </p>
+                        <div className="mt-1.5">
+                          <Button
+                            variant={isBoxelModeActive ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-full px-2 text-[11px]"
+                            onClick={() => {
+                              setActiveTool(current => {
+                                if (current === 'boxel-mode') {
+                                  return 'select'
+                                }
+
+                                return 'boxel-mode'
+                              })
+                            }}
+                          >
+                            {isBoxelModeActive ? 'Exit boxel mode' : 'Boxel mode'}
+                          </Button>
+                          {isBoxelModeActive
+                            ? (
+                                <p className="mt-1 text-[10px] text-foreground/55">
+                                  Create in 3D. Click an empty grid column to start a stack, click neighboring columns to merge laterally, and click the same column again to stack upward.
+                                </p>
+                              )
+                            : null}
+                          <Button
+                            variant={isBoxelRemoveModeActive ? 'default' : 'outline'}
+                            size="sm"
+                            className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                            onClick={() => {
+                              setActiveTool(current => {
+                                if (current === 'boxel-remove') {
+                                  return 'select'
+                                }
+
+                                return 'boxel-remove'
+                              })
+                            }}
+                          >
+                            {isBoxelRemoveModeActive ? 'Exit remove boxel' : 'Remove boxel'}
+                          </Button>
+                          {isBoxelRemoveModeActive
+                            ? (
+                                <p className="mt-1 text-[10px] text-foreground/55">
+                                  Remove in 3D. Click one boxel inside an assembly to remove it. Disconnected remnants split into separate assemblies automatically.
+                                </p>
+                              )
+                            : null}
+                          <Button
+                            variant={isCreateBoardToolActive ? 'default' : 'outline'}
+                            size="sm"
+                            className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                            onClick={() => {
+                              setActiveTool(current => {
+                                if (current === 'create-board') {
+                                  return 'select'
+                                }
+
+                                return 'create-board'
+                              })
+                            }}
+                          >
+                            {isCreateBoardToolActive ? 'Exit draw mode' : 'Draw board'}
+                          </Button>
+                          {isCreateBoardToolActive
+                            ? (
+                                <p className="mt-1 text-[10px] text-foreground/55">
+                                  Create in 3D. Click to start, click again to commit. Hold Shift for free angle. Press Esc to cancel.
+                                </p>
+                              )
+                            : null}
+                          <Button
+                            variant={isPenSketchActive ? 'default' : 'outline'}
+                            size="sm"
+                            className="mt-1.5 h-8 w-full px-2 text-[11px]"
+                            onClick={() => {
+                              setActiveTool(current => {
+                                if (current === 'pen-sketch') {
+                                  return 'select'
+                                }
+
+                                return 'pen-sketch'
+                              })
+                            }}
+                          >
+                            {isPenSketchActive ? 'Exit pen sketch' : 'Smart Pen'}
+                          </Button>
+                          {isPenSketchActive
+                            ? (
+                                <div className="mt-1">
+                                  <p className="mb-1.5 text-[10px] text-foreground/55">
+                                    Click to place control points. Double-click or click Commit to finish.
+                                  </p>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="h-7 flex-1 text-[10px]"
+                                      disabled={sketchPoints.length < 3}
+                                      onClick={handleFinishSketch}
+                                    >
+                                      Commit
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 flex-1 text-[10px]"
+                                      onClick={handleCancelSketch}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            : null}
                         </div>
-                      )
-                    : null}
-                </div>
-                <div className="mt-1.5 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
-                  {PRESET_OPTIONS.map(preset => (
-                    <button
-                      type="button"
-                      key={preset.id}
-                      className="w-full border border-border bg-card px-2 py-1.5 text-left hover:bg-muted/45"
-                      onClick={() => addBoard(preset.id)}
-                    >
-                      <span className="block text-[11px] font-semibold tracking-[-0.03em]">
-                        {preset.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                        <div className="mt-1.5 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+                          {PRESET_OPTIONS.map(preset => (
+                            <button
+                              type="button"
+                              key={preset.id}
+                              className="w-full border border-border bg-card px-2 py-1.5 text-left hover:bg-muted/45"
+                              onClick={() => addBoard(preset.id)}
+                            >
+                              <span className="block text-[11px] font-semibold tracking-[-0.03em]">
+                                {preset.label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-              <div className="mt-1.5 flex gap-1">
-                <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedContent}>
-                  Remove
-                </Button>
-                <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onExportJson}>
-                  Export
-                  <Download className="size-3" />
-                </Button>
-              </div>
+                      <div className="mt-1.5 flex gap-1">
+                        <Button variant="outline" size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={removeSelectedContent}>
+                          Remove
+                        </Button>
+                        <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={onExportJson}>
+                          Export
+                          <Download className="size-3" />
+                        </Button>
+                      </div>
+                    </>
+                  )
+                : (
+                    <div className="mt-2 space-y-2.5">
+                      <label className="block">
+                        <span className="mb-1 block text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                          Prompt
+                        </span>
+                        <textarea
+                          value={aiPrompt}
+                          onChange={event => setAiPrompt(event.target.value)}
+                          className="min-h-24 w-full resize-none border border-border bg-background px-2.5 py-2 text-[12px] leading-5 outline-none focus:border-foreground"
+                          placeholder="Describe a manufacturable structure or patch the current one"
+                        />
+                      </label>
+
+                      <div className="flex gap-1">
+                        <Button size="sm" className="h-8 flex-1 px-2 text-[11px]" onClick={() => runAiPrompt(aiPrompt)}>
+                          Run AI command
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 px-2 text-[11px]" onClick={() => setAiPrompt(AI_QUICK_PROMPTS[0] ?? '')}>
+                          Reset
+                        </Button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1">
+                        {AI_QUICK_PROMPTS.map(prompt => (
+                          <button
+                            type="button"
+                            key={prompt}
+                            className="border border-border bg-card px-2 py-1 text-[10px] text-foreground/72 transition-colors hover:bg-muted/45"
+                            onClick={() => setAiPrompt(prompt)}
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        <div className="border border-border bg-card p-2.5">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                            Intent
+                          </div>
+                          <p className="mt-1 text-[12px] font-semibold tracking-[-0.03em] text-foreground">
+                            {aiLastCommand?.summary ?? 'Prompt has not been parsed yet.'}
+                          </p>
+                          <p className="mt-1 text-[10px] text-foreground/55">
+                            Status: {aiLastCommand?.status ?? 'idle'}
+                            {aiLastCommand?.missing.length
+                              ? ` · missing ${aiLastCommand.missing.join(', ')}`
+                              : ''}
+                          </p>
+                        </div>
+
+                        <div className="border border-border bg-card p-2.5">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                            Execution
+                          </div>
+                          <ul className="mt-1 space-y-1 text-[11px] text-foreground/72">
+                            {(aiExecutionSteps.length > 0 ? aiExecutionSteps : ['Awaiting command']).map(step => (
+                              <li key={step} className="flex items-start gap-2">
+                                <span className="mt-1 block size-1.5 shrink-0 bg-foreground/55" />
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div className="border border-border bg-card p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                            Command payload
+                          </div>
+                          <span className="text-[10px] text-foreground/50">
+                            {aiLastCommand?.confidence ? `${Math.round(aiLastCommand.confidence * 100)}%` : '--'}
+                          </span>
+                        </div>
+                        <pre className="mt-1.5 max-h-36 overflow-auto text-[10px] leading-4.5 text-foreground/62 whitespace-pre-wrap break-all">
+                          {aiLastCommand?.command ? JSON.stringify(aiLastCommand.command, null, 2) : 'No executable command.'}
+                        </pre>
+                      </div>
+
+                      <div className="border border-border bg-card p-2.5">
+                        <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                          Manufacturing checks
+                        </div>
+                        <div className="mt-1.5 space-y-1.5">
+                          {aiChecks.length > 0
+                            ? aiChecks.map(check => (
+                                <div key={check.code} className="border border-border bg-background px-2 py-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-semibold tracking-[-0.02em] text-foreground">
+                                      {check.label}
+                                    </span>
+                                    <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${check.severity === 'pass'
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : check.severity === 'warning'
+                                        ? 'text-amber-600 dark:text-amber-400'
+                                        : 'text-destructive'
+                                    }`}>
+                                      {check.severity}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-[10px] text-foreground/55">
+                                    {check.detail}
+                                  </p>
+                                </div>
+                              ))
+                            : <p className="text-[11px] text-foreground/55">Run a supported prompt to inspect manufacturability.</p>}
+                        </div>
+                      </div>
+
+                      <div className="border border-border bg-card p-2.5">
+                        <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-foreground/45">
+                          Recent runs
+                        </div>
+                        <div className="mt-1.5 space-y-1">
+                          {aiHistory.length > 0
+                            ? aiHistory.map(record => (
+                                <button
+                                  type="button"
+                                  key={record.id}
+                                  className="w-full border border-border bg-background px-2 py-1.5 text-left transition-colors hover:bg-muted/45"
+                                  onClick={() => setAiPrompt(record.prompt)}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate text-[11px] font-semibold tracking-[-0.02em] text-foreground">
+                                      {record.status}
+                                    </span>
+                                    <span className="text-[10px] text-foreground/45">
+                                      reuse
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 truncate text-[10px] text-foreground/55">{record.prompt}</p>
+                                </button>
+                              ))
+                            : <p className="text-[11px] text-foreground/55">No AI runs yet.</p>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
             </OverlayPanel>
 
             <OverlayPanel className="pointer-events-auto w-full max-w-[min(100%,280px)] lg:w-[280px]">

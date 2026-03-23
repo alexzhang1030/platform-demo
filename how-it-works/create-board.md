@@ -42,6 +42,9 @@ create-board 里真正需要共享的部分不是 React 状态，而是这些纯
 
 ## 创建流程
 
+在 editor 顶层，`create-board` 和 `pen-sketch` 都属于显式工具模式。按一次 `Escape` 会直接退出当前工具并回到 `select`，而不是继续停留在创建模式里等待下一次点击。
+
+
 组件层先把鼠标命中的地面点转成 document 坐标，再做三步：
 
 1. 网格吸附

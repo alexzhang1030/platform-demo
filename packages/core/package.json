@@ -1,5 +1,5 @@
 {
-  "name": "@xtool-demo/core",
+  "name": "@platform-demo/core",
   "type": "module",
   "version": "0.0.0",
   "private": true,
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@xtool-demo/protocol": "workspace:*"
+    "@platform-demo/protocol": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

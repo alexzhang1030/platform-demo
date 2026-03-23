@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test'
-import type { BoxelAssembly } from '@xtool-demo/protocol'
+import type { BoxelAssembly } from '@platform-demo/protocol'
 
 import {
   appendBoxelCellAboveColumn,

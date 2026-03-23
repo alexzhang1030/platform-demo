@@ -3,7 +3,7 @@ import type {
   ControlPoint,
   Path2DShape,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 import { buildBoxelAssemblyBounds } from './boxel'
 
 export * from './board-finger-joint'

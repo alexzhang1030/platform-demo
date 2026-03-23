@@ -10,7 +10,7 @@ import type {
 } from '@xtool-demo/protocol'
 import type { AnchorPoint3D } from '@xtool-demo/core'
 import type { ComponentRef, RefObject } from 'react'
-import type { EditorSelectionState } from '@/lib/pattern-studio'
+import type { BoxelFaceNormal, EditorSelectionState } from '@/lib/pattern-studio'
 import { Button } from '@workspace/ui/components/button'
 import {
   OrbitControls,
@@ -42,6 +42,7 @@ import {
   CREATE_BOARD_GRID_SIZE,
   addGableRoofToGroup,
   commitBoxelAtColumn,
+  commitBoxelFromAssemblyCell,
   evaluateBoardGroupsAfterAdd,
   getAssemblyJointCandidates,
   commitStandingBoardFromSpan,
@@ -189,6 +190,21 @@ interface HeightResizeDraft {
   originalHeight: number
   previewHeight: number
   resizePlane: THREE.Plane
+}
+
+function getBoxelFaceNormal(event: ThreeEvent<PointerEvent>): BoxelFaceNormal {
+  const face = event.face
+  const normal = face?.normal
+
+  if (!normal) {
+    return { x: 0, y: 0, z: 1 }
+  }
+
+  return {
+    x: normal.x,
+    y: normal.y,
+    z: normal.z,
+  }
 }
 
 function isBoardAnchorSide(side: string): side is BoardAnchorSide {
@@ -1300,7 +1316,24 @@ function Scene({
       z: number
     },
   ) {
-    if (!boxelRemoveModeEnabled || isCameraPanModifierPressed) {
+    if (isCameraPanModifierPressed) {
+      return
+    }
+
+    if (boxelModeEnabled) {
+      event.stopPropagation()
+      const result = commitBoxelFromAssemblyCell(
+        document,
+        assembly.id,
+        cell,
+        getBoxelFaceNormal(event),
+      )
+      onDocumentChange(result.document)
+      onSelectionChange(result.selection)
+      return
+    }
+
+    if (!boxelRemoveModeEnabled) {
       return
     }
 
@@ -1412,7 +1445,7 @@ function Scene({
         <group key={assembly.id}>
           <BoxelAssemblyMesh
             assembly={assembly}
-            onCellPointerDown={boxelRemoveModeEnabled ? handleAssemblyCellPointerDown : undefined}
+            onCellPointerDown={isBoxelEditModeActive ? handleAssemblyCellPointerDown : undefined}
             onMeshChange={handleAssemblyMeshChange}
             onPointerDown={isCreateModeActive ? undefined : handleAssemblyPointerDown}
           />

@@ -16,6 +16,8 @@
   解释 3D create-board 如何生成立板、如何做吸附，以及吸附后为什么会把燕尾榫直接写进 board 几何。
 - `boxel-mode.md`
   解释 `boxel-mode` 如何把体素堆叠持久化成 `BoxelAssembly`，以及 editor 如何预览、选择和提交这些 stack。
+- `algorithms.md`
+  集中整理 boxel、gable roof 和 finger joint 的核心算法，尤其说明 finger joint 如何从 connection 派生成局部轮廓。
 - `lighting.md`
   解释 3D 预览的三盏方向光和环境光如何工作。
 - `webgpu-grid.md`
@@ -32,6 +34,8 @@
 - `packages/core/src/nesting.ts`
 - `packages/core/src/geometry.ts`
 - `packages/core/src/upright-board.ts`
+- `packages/core/src/board-finger-joint.ts`
+- `packages/core/src/boxel.ts`
 - `apps/web/src/components/pattern-studio/pattern-studio-lights.tsx`
 - `apps/web/src/components/pattern-studio/webgpu-grid.tsx`
 - `apps/web/src/components/pattern-studio/selection-outline.tsx`

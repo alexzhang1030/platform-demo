@@ -1,5 +1,5 @@
 {
-  "name": "@xtool-demo/monorepo",
+  "name": "@platform-demo/monorepo",
   "type": "module",
   "private": true,
   "packageManager": "bun@1.3.10",

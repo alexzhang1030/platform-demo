@@ -9,12 +9,18 @@ import {
 import {
   addGableRoofToGroup,
   commitBoxelAtColumn,
+  commitBoxelFromAssemblyCell,
   createEditorSelection,
   removeBoxelFromAssembly,
   normalizeEditorSelection,
   selectSingleAssembly,
   toggleAssemblySelection,
 } from './pattern-studio'
+import {
+  applyAiCommand,
+  interpretAiPrompt,
+  runManufacturingChecks,
+} from './pattern-studio-ai'
 
 describe('pattern studio selection helpers', () => {
   test('can select a single assembly without board selection', () => {
@@ -168,6 +174,52 @@ describe('pattern studio boxel commit helpers', () => {
     ])
   })
 
+  test('stacks upward when clicking the top face of an existing boxel', () => {
+    const firstCommit = commitBoxelAtColumn(createDefaultPatternDocument(), { x: 80, y: 120 })
+    const assembly = firstCommit.document.assemblies[0]
+
+    expect(assembly).toBeDefined()
+    if (!assembly) {
+      return
+    }
+
+    const result = commitBoxelFromAssemblyCell(
+      firstCommit.document,
+      assembly.id,
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 1 },
+    )
+
+    expect(result.document.assemblies).toHaveLength(1)
+    expect(result.document.assemblies[0]?.cells).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 1 },
+    ])
+  })
+
+  test('adds laterally when clicking the side face of an existing boxel', () => {
+    const firstCommit = commitBoxelAtColumn(createDefaultPatternDocument(), { x: 80, y: 120 })
+    const assembly = firstCommit.document.assemblies[0]
+
+    expect(assembly).toBeDefined()
+    if (!assembly) {
+      return
+    }
+
+    const result = commitBoxelFromAssemblyCell(
+      firstCommit.document,
+      assembly.id,
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+    )
+
+    expect(result.document.assemblies).toHaveLength(1)
+    expect(result.document.assemblies[0]?.cells).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+    ])
+  })
+
   test('bridges multiple assemblies into one connected result', () => {
     const firstCommit = commitBoxelAtColumn(createDefaultPatternDocument(), { x: 80, y: 120 })
     const secondCommit = commitBoxelAtColumn(firstCommit.document, { x: 160, y: 120 })
@@ -199,5 +251,128 @@ describe('pattern studio boxel commit helpers', () => {
       [{ x: 0, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 0 }],
     ])
+  })
+})
+
+describe('pattern studio ai prompt parser', () => {
+  test('parses a generate prompt into a ready box command', () => {
+    const command = interpretAiPrompt('生成一个 120x80x60mm 的收纳盒，板厚 3mm，使用指接榫，带提手孔')
+
+    expect(command.status).toBe('ready')
+    expect(command.mode).toBe('generate')
+    expect(command.summary).toContain('box')
+    if (command.command?.type !== 'generate-structure') {
+      throw new Error('Expected generate command')
+    }
+
+    expect(command.command.structure).toBe('box')
+    expect(command.command.dimensions).toEqual({
+      width: 120,
+      height: 80,
+      depth: 60,
+    })
+    expect(command.command.material.thickness).toBe(3)
+    expect(command.command.joints.type).toBe('finger-joint')
+    expect(command.command.features.handleCutout).toBe(true)
+  })
+
+  test('parses a patch prompt into controlled operations', () => {
+    const command = interpretAiPrompt('把高度增加 20mm，再加一个提手孔，并把板厚改成 4mm')
+
+    expect(command.status).toBe('ready')
+    expect(command.mode).toBe('patch')
+    if (command.command?.type !== 'patch-structure') {
+      throw new Error('Expected patch command')
+    }
+
+    expect(command.command.operations).toEqual([
+      { type: 'resize', height: 20, mode: 'delta' },
+      { type: 'toggle-handle-cutout', enabled: true },
+      { type: 'adjust-thickness', thickness: 4 },
+    ])
+  })
+
+  test('marks a missing thickness generate prompt as partial', () => {
+    const command = interpretAiPrompt('生成一个 120x80x60mm 的收纳盒')
+
+    expect(command.status).toBe('partial')
+    expect(command.missing).toEqual(['material thickness'])
+  })
+
+  test('fails unsupported prompts cleanly', () => {
+    const command = interpretAiPrompt('帮我做一个宇宙飞船')
+
+    expect(command.status).toBe('failed')
+    expect(command.command).toBeNull()
+  })
+})
+
+describe('pattern studio ai command executor', () => {
+  test('generates a box document with deterministic boards', () => {
+    const result = applyAiCommand(
+      createDefaultPatternDocument(),
+      interpretAiPrompt('生成一个 120x80x60mm 的收纳盒，板厚 3mm，使用指接榫，带提手孔'),
+    )
+
+    expect(result.changed).toBe(true)
+    expect(result.document.boards).toHaveLength(5)
+    expect(result.document.boards.map(board => board.name)).toEqual([
+      'Front panel',
+      'Back panel',
+      'Left panel',
+      'Right panel',
+      'Bottom panel',
+    ])
+    expect(result.executionSteps).toEqual([
+      'Parse prompt into structure intent',
+      'Create box panels',
+      'Apply finger-joint intent',
+      'Apply handle cutout',
+      'Lay out flat pattern',
+    ])
+    expect(result.document.boards[0]?.holes).toHaveLength(1)
+  })
+
+  test('patches the current structure with controlled operations', () => {
+    const generated = applyAiCommand(
+      createDefaultPatternDocument(),
+      interpretAiPrompt('生成一个 120x80x60mm 的收纳盒，板厚 3mm，使用指接榫'),
+    )
+
+    const patched = applyAiCommand(
+      generated.document,
+      interpretAiPrompt('把高度增加 20mm，再加一个提手孔，并把板厚改成 4mm'),
+    )
+
+    expect(patched.changed).toBe(true)
+    expect(patched.document.boards.every(board => board.thickness === 4)).toBe(true)
+    expect(patched.document.boards[0]?.holes).toHaveLength(1)
+    const frontPanel = patched.document.boards.find(board => board.name === 'Front panel')
+    expect(frontPanel?.outline.segments[2]?.points[0]?.y).toBe(100)
+  })
+})
+
+describe('pattern studio ai manufacturing checks', () => {
+  test('warns when a panel becomes too slender for manufacturing confidence', () => {
+    const generated = applyAiCommand(
+      createDefaultPatternDocument(),
+      interpretAiPrompt('生成一个 120x80x20mm 的收纳盒，板厚 18mm，使用插槽'),
+    )
+
+    const checks = runManufacturingChecks(generated.document, generated.command)
+
+    expect(checks.some(check => check.severity === 'warning' && check.code === 'thin-span')).toBe(true)
+  })
+
+  test('returns passing checks for a healthy generated box', () => {
+    const generated = applyAiCommand(
+      createDefaultPatternDocument(),
+      interpretAiPrompt('生成一个 120x80x60mm 的收纳盒，板厚 3mm，使用指接榫'),
+    )
+
+    const checks = runManufacturingChecks(generated.document, generated.command)
+
+    expect(checks.some(check => check.severity === 'pass' && check.code === 'flat-layout-ready')).toBe(true)
+    expect(checks.some(check => check.severity === 'warning')).toBe(false)
   })
 })

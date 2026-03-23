@@ -18,6 +18,7 @@ import {
   findFaceAdjacentAssemblies,
   findClosestUprightBoardMoveSnap,
   getBoundsFromPoints,
+  getBoxelColumnHeight,
   getUprightBoardBaseline,
   getUprightBoardHeight,
   getUprightBoardLength,
@@ -84,6 +85,12 @@ export interface BoxelCommitResult {
   assembly: BoxelAssembly
   document: PatternDocument
   selection: EditorSelectionState
+}
+
+export interface BoxelFaceNormal {
+  x: number
+  y: number
+  z: number
 }
 
 export interface BoxelRemoveResult {
@@ -840,6 +847,100 @@ function createBoxelAssembly(column: ControlPoint): BoxelAssembly {
       y: column.y,
     },
     cells: [{ x: 0, y: 0, z: 0 }],
+  }
+}
+
+function getAssemblyWorldOffset(assembly: BoxelAssembly) {
+  return {
+    x: Math.round(assembly.origin.x / assembly.cellSize),
+    y: Math.round(assembly.origin.y / assembly.cellSize),
+  }
+}
+
+function getWorldCellForAssemblyCell(assembly: BoxelAssembly, cell: BoxelCell) {
+  const offset = getAssemblyWorldOffset(assembly)
+
+  return {
+    x: offset.x + cell.x,
+    y: offset.y + cell.y,
+    z: cell.z,
+  }
+}
+
+function getTargetWorldCellFromFace(
+  assembly: BoxelAssembly,
+  cell: BoxelCell,
+  faceNormal: BoxelFaceNormal,
+): BoxelCell {
+  const worldCell = getWorldCellForAssemblyCell(assembly, cell)
+  const absX = Math.abs(faceNormal.x)
+  const absY = Math.abs(faceNormal.y)
+  const absZ = Math.abs(faceNormal.z)
+
+  if (absZ >= absX && absZ >= absY) {
+    return {
+      x: worldCell.x,
+      y: worldCell.y,
+      z: faceNormal.z >= 0 ? getBoxelColumnHeight(assembly, { x: cell.x, y: cell.y }) : worldCell.z + 1,
+    }
+  }
+
+  if (absX >= absY) {
+    return {
+      x: worldCell.x + (faceNormal.x >= 0 ? 1 : -1),
+      y: worldCell.y,
+      z: worldCell.z,
+    }
+  }
+
+  return {
+    x: worldCell.x,
+    y: worldCell.y + (faceNormal.y >= 0 ? 1 : -1),
+    z: worldCell.z,
+  }
+}
+
+export function commitBoxelFromAssemblyCell(
+  document: PatternDocument,
+  assemblyId: string,
+  cell: BoxelCell,
+  faceNormal: BoxelFaceNormal,
+): BoxelCommitResult {
+  const assembly = document.assemblies.find(currentAssembly => currentAssembly.id === assemblyId)
+  if (!assembly) {
+    return commitBoxelAtColumn(document, {
+      x: Math.round(cell.x * BOXEL_DEFAULT_CELL_SIZE),
+      y: Math.round(cell.y * BOXEL_DEFAULT_CELL_SIZE),
+    })
+  }
+
+  const targetWorldCell = getTargetWorldCellFromFace(assembly, cell, faceNormal)
+  const adjacentAssemblies = findFaceAdjacentAssemblies(
+    document.assemblies.filter(currentAssembly => currentAssembly.id !== assembly.id),
+    targetWorldCell,
+  )
+  const mergedAssembly = mergeAssembliesThroughWorldCell([assembly, ...adjacentAssemblies], targetWorldCell)
+
+  if (!mergedAssembly) {
+    return {
+      assembly,
+      document,
+      selection: selectSingleAssembly(assembly.id),
+    }
+  }
+
+  const touchedAssemblyIds = new Set([assembly.id, ...adjacentAssemblies.map(currentAssembly => currentAssembly.id)])
+
+  return {
+    assembly: mergedAssembly,
+    document: updateDocumentTimestamp({
+      ...document,
+      assemblies: sortAssembliesByOrigin([
+        ...document.assemblies.filter(currentAssembly => !touchedAssemblyIds.has(currentAssembly.id)),
+        mergedAssembly,
+      ]),
+    }),
+    selection: selectSingleAssembly(mergedAssembly.id),
   }
 }
 

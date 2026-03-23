@@ -3,7 +3,7 @@ import type {
   BoardGroup,
   ControlPoint,
   PatternDocument,
-} from '@xtool-demo/protocol'
+} from '@platform-demo/protocol'
 
 import { getBoardOutlineWithJoints } from './board-finger-joint'
 import {

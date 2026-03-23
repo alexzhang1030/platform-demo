@@ -35,10 +35,10 @@
       "@workspace/ui/*": [
         "../../packages/ui/src/*"
       ],
-      "@xtool-demo/core": [
+      "@platform-demo/core": [
         "../../packages/core/src/index.ts"
       ],
-      "@xtool-demo/protocol": [
+      "@platform-demo/protocol": [
         "../../packages/protocol/src/index.ts"
       ]
     }

@@ -59,6 +59,15 @@
 
 也就是说，“一次点击属于哪个 assembly”不再靠历史决定，而是靠连通关系决定。
 
+当用户不是点地面，而是直接点到一个已有 boxel 时，3D 视图会改用基于点击面的提交逻辑：
+
+- 点顶面：沿当前列继续往上摞
+- 点侧面：沿该侧面的法线方向在同层侧向新增
+
+这条路径由 `commitBoxelFromAssemblyCell()` 负责。`BoardPreview3D` 会从 `event.face.normal` 读取命中的面法线，再把目标 cell 交给文档更新逻辑。这样 boxel mode 的点击结果和用户实际点到的 3D 面保持一致，而不是一律回退到地面列投影。
+
+在 editor 顶层，`Escape` 会直接把 `boxel-mode` 退回到 `select`。这和 create-board、pen-sketch、boxel-remove 现在共用同一套退出规则：按一次 `Escape` 就离开当前工具，而不是只取消局部预览。
+
 ## 为什么 boxel 逻辑分到 core
 
 共享出去的是这些纯计算：
